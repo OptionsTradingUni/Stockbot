@@ -1,0 +1,4 @@
+.env
+profit_flex.db  # SQLite DB; don't commit
+__pycache__/
+*.pyc
