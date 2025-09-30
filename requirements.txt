@@ -3,3 +3,4 @@ sqlalchemy==2.0.25
 pandas==2.2.0
 python-dotenv==1.0.1
 pyarrow
+psycopg2
