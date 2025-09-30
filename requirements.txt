@@ -2,5 +2,5 @@ python-telegram-bot==20.7
 sqlalchemy==2.0.25
 pandas==2.2.0
 python-dotenv==1.0.1
-pyarrow
-psycopg2
+pyarrow==21.0.0
+psycopg2-binary==2.9.10
