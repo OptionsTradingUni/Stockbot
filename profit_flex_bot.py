@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 # Load environment
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("8424414707:AAE8l6_6krko6LapUOAU5U8LhSzjP_TRT20")
-TELEGRAM_CHAT_ID = os.getenv("-1003118326700")
+TELEGRAM_TOKEN = os.getenv(8424414707:AAE8l6_6krko6LapUOAU5U8LhSzjP_TRT20)
+TELEGRAM_CHAT_ID = os.getenv(-1003118326700)
 STOCK_SYMBOLS = [s.strip() for s in os.getenv("STOCK_SYMBOLS", "TSLA,AAPL,NVDA,MSFT,AMZN,GOOGL,META").split(",")]
 CRYPTO_SYMBOLS = [s.strip() for s in os.getenv("CRYPTO_SYMBOLS", "BTC,ETH,SOL").split(",")]
 MEME_COIN = "NIKY"  # Onyx Dachshund on Solana
