@@ -2,6 +2,7 @@ import os
 import random
 import asyncio
 import logging
+import psycopg2
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import pandas as pd
