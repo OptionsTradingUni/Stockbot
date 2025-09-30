@@ -1,12 +1,3 @@
-"""
-Profit flex bot for stocks, crypto, and $NIKY meme coin on Solana.
-Posts non-repetitive profit scenarios every 20/40 minutes with tailored ranges:
-- Stocks/Crypto: $209 → $1,000, $509 → $4,000, etc. (2x–8x, 100%–700% gains).
-- $NIKY: $309 → $700, $700 → $5k–$7k, $1,000 → $11,000, etc. (2x–15x, 100%–1400% gains).
-Varied messaging with multiple templates and reasons to avoid repetition.
-
-"""
-
 import os
 import random
 import asyncio
@@ -14,15 +5,23 @@ import logging
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime
+from sqlalchemy.ext.declarative import declarative_base
 from telegram import Bot, Update, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# Setup logging
+# Setup logging with file and console handlers
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "profit_flex_bot.log")
+
 logging.basicConfig(
-    filename='profit_flex_bot.log',
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler()  # Console logging for Railway logs
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -42,8 +41,34 @@ RATE_LIMIT_SECONDS = float(os.getenv("RATE_LIMIT_SECONDS", "5"))
 # Combine symbols for flex posts
 ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + [MEME_COIN]
 
-# Initialize DB engine
+# Initialize DB engine and auto-create tables
 engine = create_engine(DATABASE_URL, future=True)
+Base = declarative_base()
+
+# Define tables
+metadata = MetaData()
+
+posts = Table(
+    "posts", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("symbol", String),
+    Column("content", String),
+    Column("deposit", Float),
+    Column("profit", Float),
+    Column("posted_at", DateTime)
+)
+
+users = Table(
+    "users", metadata,
+    Column("user_id", String, primary_key=True),
+    Column("username", String),
+    Column("display_name", String),
+    Column("wins", Integer),
+    Column("total_trades", Integer)
+)
+
+# Auto-create tables if they don't exist
+metadata.create_all(engine)
 
 # Telegram Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
@@ -53,7 +78,7 @@ def fetch_recent_profits():
     try:
         with engine.connect() as conn:
             df = pd.read_sql("SELECT profit FROM posts WHERE profit IS NOT NULL ORDER BY posted_at DESC LIMIT 50", conn)
-            return set(df['profit'].tolist())
+            return set(df["profit"].tolist())
     except Exception as e:
         logger.error(f"Error fetching recent profits: {e}")
         return set()
@@ -64,10 +89,10 @@ def generate_flex_scenario(symbol):
     
     if symbol == MEME_COIN:
         deposit_options = [
-            (309, 700),  # $309 → $700
-            (700, random.choice([5000, 6000, 7000])),  # $700 → $5k/$6k/$7k
-            (1000, 11000),  # $1,000 → $11,000
-            (1500, random.randint(8000, 22000)),  # $1,500 → $8k–$22k
+            (309, 700),
+            (700, random.choice([5000, 6000, 7000])),
+            (1000, 11000),
+            (1500, random.randint(8000, 22000)),
         ]
         max_attempts = 10
         for _ in range(max_attempts):
@@ -81,7 +106,7 @@ def generate_flex_scenario(symbol):
                 target_profit = random.randint(8000, 22000)
         multiplier = target_profit / deposit
         percentage_gain = round((multiplier - 1) * 100, 1)
-        price_increase = int(percentage_gain * random.uniform(0.8, 1.2))  # Align pump with gain
+        price_increase = int(percentage_gain * random.uniform(0.8, 1.2))
         trading_style = random.choice(["Early Sniping", "Pump Riding", "Community Flip", "Airdrop Hunt"])
         reasons = [
             f"$NIKY exploded {price_increase}% after a viral dachshund meme!",
@@ -95,12 +120,12 @@ def generate_flex_scenario(symbol):
             f"Dachshund vibes sent $NIKY up {price_increase}%!",
             f"$NIKY’s {price_increase}% moonshot was pure fire!",
         ]
-    else:  # Stocks or Crypto
+    else:
         deposit_options = [
-            (209, 1000),  # $209 → $1,000
-            (509, 4000),  # $509 → $4,000
-            (500, random.randint(1200, 5000)),  # $500 → $1.2k–$5k
-            (1000, random.randint(2500, 8000)),  # $1,000 → $2.5k–$8k
+            (209, 1000),
+            (509, 4000),
+            (500, random.randint(1200, 5000)),
+            (1000, random.randint(2500, 8000)),
         ]
         max_attempts = 10
         for _ in range(max_attempts):
@@ -114,7 +139,7 @@ def generate_flex_scenario(symbol):
                 target_profit = random.randint(1200, 5000)
         multiplier = target_profit / deposit
         percentage_gain = round((multiplier - 1) * 100, 1)
-        price_increase = int(percentage_gain * random.uniform(0.8, 1.2))  # Align pump with gain
+        price_increase = int(percentage_gain * random.uniform(0.8, 1.2))
         if symbol in STOCK_SYMBOLS:
             trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
             reasons = [
@@ -129,7 +154,7 @@ def generate_flex_scenario(symbol):
                 f"{trading_style} on {symbol} brought a {price_increase}% haul!",
                 f"{symbol} mooned {price_increase}% with {trading_style} swagger!",
             ]
-        else:  # CRYPTO_SYMBOLS
+        else:
             trading_style = random.choice(["HODL", "Swing Trade", "DCA", "Arbitrage", "Leverage Trading"])
             reasons = [
                 f"{symbol} {trading_style} mooned {price_increase}% on crypto hype!",
@@ -233,8 +258,8 @@ def craft_flex_message(symbol, deposit, profit, percentage_gain, reason, trading
 def craft_price_chart(symbol):
     try:
         base_price = random.uniform(0.0005, 0.002) if symbol == "NIKY" else random.uniform(100, 1000)
-        price_increase = random.randint(100, 1400 if symbol == "NIKY" else 700) / 100  # Higher for NIKY
-        prices = [base_price * (1 + (price_increase * i / 50)) for i in range(51)]  # Linear pump
+        price_increase = random.randint(100, 1400 if symbol == "NIKY" else 700) / 100
+        prices = [base_price * (1 + (price_increase * i / 50)) for i in range(51)]
         labels = [f"T-{50-i}h" for i in range(50, -1, -1)]
         color = "#FFD700" if symbol == "NIKY" else "#00C4B4"
         bg_color = "rgba(255, 215, 0, 0.2)" if symbol == "NIKY" else "rgba(0, 196, 180, 0.2)"
@@ -283,7 +308,7 @@ async def flex_posting_loop(app):
             logger.info(f"Next flex post in {wait_minutes}m")
             await asyncio.sleep(wait_seconds)
 
-            symbol = random.choices(ALL_SYMBOLS, weights=[30]*len(STOCK_SYMBOLS) + [20]*len(CRYPTO_SYMBOLS) + [30])[0]  # Higher weight for NIKY
+            symbol = random.choices(ALL_SYMBOLS, weights=[30]*len(STOCK_SYMBOLS) + [20]*len(CRYPTO_SYMBOLS) + [30])[0]
             deposit, profit, percentage_gain, reason, trading_style = generate_flex_scenario(symbol)
             msg = craft_flex_message(symbol, deposit, profit, percentage_gain, reason, trading_style)
             try:
