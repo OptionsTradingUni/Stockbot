@@ -146,8 +146,8 @@ def initialize_stories():
 
         for gender, traders in SUCCESS_TRADERS.items():
             for _, name, image_file in traders:
-                deposit = random.choice([300, 500, 700, 900, 1200, 1500, 2000])
-                profit = int(deposit * random.uniform(2, 8))
+                deposit = random.randint(300, 2000)  # any number between 300 and 2000
+                profit = int(deposit * random.uniform(2, 8))  # 2x–8x
 
                 deposit_str = f"${deposit:,}"
                 profit_str = f"${profit:,}"
@@ -316,41 +316,37 @@ def fetch_cached_rankings():
 
         return lines
 
-# Craft a profit message with mentions
 def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     multiplier = round(profit / deposit, 1)
-    user_df = fetch_user_stats()
-    social_lines = []
-    for i, (_, r) in enumerate(user_df.iterrows(), 1):
-        social_lines.append(f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit")
-    if user_df.empty:
-        social_lines = [f"{i}. {random.choice(RANKING_TRADERS)[1]} — ${random.randint(1000,5000):,.2f} profit" for i in range(1, 11)]
-    
+
+    # Use cached rankings instead of fetch_user_stats()
+    social_lines = fetch_cached_rankings()
     social_text = "\n".join(social_lines)
+
     mention = random.choice(RANKING_TRADERS)[1]
     tag = "#MemeCoinGains #CryptoTrends" if symbol in MEME_COINS else "#StockMarket #CryptoWins"
     asset_desc = "Meme Coin" if symbol in MEME_COINS else symbol
-    templates = [
-        (
-            f"📈 <b>{symbol} Profit Update</b> 📈\n"
-            f"<b>{trading_style}</b> on {asset_desc}\n"
-            f"💰 Invested: ${deposit:,.2f}\n"
-            f"🎯 {multiplier}x Return → Realized: ${profit:,.2f}\n"
-            f"🔥 {reason}\n"
-            f"📊 Achieved {percentage_gain}% ROI!\n"
-            f"Time: {ts}\n\n"
-            f"🏆 Top Trader Rankings:\n{social_text}\n"
-            f"👉 Shoutout to {mention} for inspiring us!\n\n"
-            f"Join us at Options Trading University for more insights! {tag}"
-        ),
-    ]
+
+    msg = (
+        f"📈 <b>{symbol} Profit Update</b> 📈\n"
+        f"<b>{trading_style}</b> on {asset_desc}\n"
+        f"💰 Invested: ${deposit:,.2f}\n"
+        f"🎯 {multiplier}x Return → Realized: ${profit:,.2f}\n"
+        f"🔥 {reason}\n"
+        f"📊 Achieved {percentage_gain}% ROI!\n"
+        f"Time: {ts}\n\n"
+        f"🏆 Top Trader Rankings:\n{social_text}\n"
+        f"👉 Shoutout to {mention} for inspiring us!\n\n"
+        f"Join us at Options Trading University for more insights! {tag}"
+    )
+
     keyboard = [
         [InlineKeyboardButton("View Rankings", callback_data="rankings"),
          InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    return random.choice(templates), reply_markup
+    return msg, reply_markup
 
 # Craft success story
 def craft_success_story(current_index, gender):
