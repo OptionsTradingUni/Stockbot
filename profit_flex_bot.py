@@ -620,7 +620,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
         welcome_text = (
-            f"📌 Back to Main Menu\n\n"
+            f"📌 OPTIONS TRADING\n\n"
             f"At Options Trading University, we provide expert-led training, real-time market analysis, "
             f"and a thriving community of successful traders.\n\n"
             f"Why join us?\n"
