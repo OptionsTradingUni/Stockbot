@@ -11,6 +11,8 @@ import os
 import random
 import asyncio
 import logging
+from sqlalchemy import select, insert, delete
+from datetime import timedelta
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import pandas as pd
@@ -126,7 +128,6 @@ SUCCESS_STORY_TEMPLATES = {
     ]
 }
 
-# Initialize or load stories
 def initialize_stories():
     with engine.begin() as conn:
         existing = conn.execute(success_stories.select()).fetchall()
@@ -143,11 +144,20 @@ def initialize_stories():
 
         logger.info("Generating new success stories...")
         stories = {"male": [], "female": []}
+        used_numbers = set()
 
         for gender, traders in SUCCESS_TRADERS.items():
             for _, name, image_file in traders:
-                deposit = random.randint(300, 2000)  # any number between 300 and 2000
-                profit = int(deposit * random.uniform(2, 8))  # 2x–8x
+                # Make sure deposit is unique
+                deposit = random.randint(300, 2000)
+                while deposit in used_numbers:
+                    deposit = random.randint(300, 2000)
+                used_numbers.add(deposit)
+
+                profit = int(deposit * random.uniform(2, 8))
+                while profit in used_numbers:
+                    profit = int(deposit * random.uniform(2, 8))
+                used_numbers.add(profit)
 
                 deposit_str = f"${deposit:,}"
                 profit_str = f"${profit:,}"
@@ -290,7 +300,6 @@ def generate_profit_scenario(symbol):
     
     return deposit, target_profit, percentage_gain, random.choice(reasons), trading_style
 
-# Fetch rankings (cached for 5 hours)
 def fetch_cached_rankings():
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:
@@ -298,20 +307,21 @@ def fetch_cached_rankings():
         if row and (now - row.timestamp) < timedelta(hours=5):
             return row.content.split("\n")
 
-        # Generate new rankings
+        # If DB empty, use fake rankings
         try:
             df = pd.read_sql("SELECT username, total_profit FROM users ORDER BY total_profit DESC LIMIT 10", conn)
             if df.empty:
-                ranking_data = [(name, random.uniform(1000, 10000)) for _, name in random.sample(RANKING_TRADERS, 10)]
+                ranking_data = [(name, round(random.uniform(1000, 20000), 2)) for _, name in random.sample(RANKING_TRADERS, 10)]
                 df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
         except:
-            ranking_data = [(name, random.uniform(1000, 10000)) for _, name in random.sample(RANKING_TRADERS, 10)]
+            ranking_data = [(name, round(random.uniform(1000, 20000), 2)) for _, name in random.sample(RANKING_TRADERS, 10)]
             df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
 
-        lines = [f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit" for i, (_, r) in enumerate(df.iterrows(), 1)]
+        lines = [f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit"
+                 for i, (_, r) in enumerate(df.iterrows(), 1)]
 
-        # Save in cache
-        conn.execute(delete(rankings_cache))  # keep only one cache row
+        # Save cache
+        conn.execute(delete(rankings_cache))
         conn.execute(insert(rankings_cache).values(content="\n".join(lines), timestamp=now))
 
         return lines
