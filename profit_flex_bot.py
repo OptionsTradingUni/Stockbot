@@ -110,6 +110,14 @@ IMAGE_DIR = os.getenv("IMAGE_DIR", "images/")
 engine = create_engine(DATABASE_URL, future=True)
 metadata = MetaData()
 
+rankings_cache = Table(
+    "rankings_cache", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("content", String),
+    Column("timestamp", DateTime),
+    Column("scope", String)  # "daily", "weekly", "monthly"
+)
+
 posts = Table(
     "posts", metadata,
     Column("id", Integer, primary_key=True),
@@ -543,74 +551,88 @@ def generate_profit_scenario(symbol):
 
     return deposit, profit, percentage_gain, random.choice(reasons), trading_style
 
-def fetch_cached_rankings():
+def fetch_cached_rankings(new_name=None, new_profit=None, app=None):
     """
-    Build a rich leaderboard with 15–20 names, descending, unique totals.
-    Cache for 5 hours to keep the story coherent across posts.
+    Returns current rankings.
+    - If cache < 5h old, reuse.
+    - If a new profit beats leaderboard → insert trader, re-sort, announce.
+    - Full refresh every 5h.
     """
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache)).fetchone()
+        refresh_needed = False
+        lines = []
+
         if row:
             ts = row.timestamp
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
-            if (now - ts) < timedelta(hours=5):
-                return row.content.split("\n")
+            lines = row.content.split("\n")
 
-        # How many entries this time (15–20)
-        count = random.randint(15, 20)
+            if (now - ts) >= timedelta(hours=5):
+                refresh_needed = True
 
-        # If you created RANKING_TRADERS with ~200 names, this will sample cleanly:
-        selected = random.sample(RANKING_TRADERS, count)
+        # --- Build fresh rankings if empty/expired ---
+        if not row or refresh_needed:
+            lines = build_rankings_snapshot()
+            conn.execute(delete(rankings_cache))
+            conn.execute(insert(rankings_cache).values(
+                content="\n".join(lines),
+                timestamp=now
+            ))
 
-        # Buckets for believable descending totals
-        # Top 3: 15k–40k, next 5: 8k–15k, rest: 2k–8k
-        ranges = []
-        for i in range(1, count + 1):
-            if i <= 3:                # podium
-                ranges.append((15000, 40000))
-            elif i <= 8:              # upper mid
-                ranges.append((8000, 15000))
-            else:                     # rest
-                ranges.append((2000, 8000))
+        # --- Insert new trader dynamically ---
+        elif new_profit and new_name:
+            try:
+                ranking_pairs = []
+                for line in lines:
+                    parts = line.split("—")
+                    name = parts[0].split()[-1].strip("</b>")
+                    profit = int("".join([c for c in parts[1] if c.isdigit()]))
+                    ranking_pairs.append((name, profit))
 
-        # Create unique totals per slot, then sort desc anyway (for realism)
-        totals = set()
-        ranking_pairs = []
-        for i, (_, name) in enumerate(selected, start=1):
-            low, high = ranges[i-1]
-            val = random.randint(low, high) // 50 * 50
-            while val in totals:
-                val = random.randint(low, high) // 50 * 50
-            totals.add(val)
-            ranking_pairs.append((name, val))
+                min_profit = ranking_pairs[-1][1]
+                if new_profit > min_profit:
+                    ranking_pairs.append((new_name, new_profit))
+                    ranking_pairs.sort(key=lambda x: x[1], reverse=True)
+                    ranking_pairs = ranking_pairs[:20]
 
-        # Sort by profit descending
-        ranking_pairs.sort(key=lambda x: x[1], reverse=True)
+                    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+                    lines = []
+                    for i, (name, total) in enumerate(ranking_pairs, start=1):
+                        badge = medals.get(i, f"{i}.")
+                        lines.append(f"{badge} <b>{name}</b> — ${total:,} profit")
 
-        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-        lines = []
-        for i, (name, total) in enumerate(ranking_pairs, start=1):
-            badge = medals.get(i, f"{i}.")
-            lines.append(f"{badge} <b>{name}</b> — ${total:,} profit")
+                    # Save new snapshot
+                    conn.execute(delete(rankings_cache))
+                    conn.execute(insert(rankings_cache).values(
+                        content="\n".join(lines),
+                        timestamp=now
+                    ))
 
-        # Cache snapshot
-        conn.execute(delete(rankings_cache))
-        conn.execute(insert(rankings_cache).values(
-            content="\n".join(lines),
-            timestamp=now
-        ))
+                    # 🚨 Announce to group if app is passed
+                    if app:
+                        asyncio.create_task(app.bot.send_message(
+                            chat_id=TELEGRAM_CHAT_ID,
+                            text=f"🔥 BREAKING: <b>{new_name}</b> just entered the Top 20 with ${new_profit:,} profit!",
+                            parse_mode=constants.ParseMode.HTML
+                        ))
+
+            except Exception as e:
+                logger.error(f"Ranking insertion error: {e}")
+
         return lines
 
-def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style):
+def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style, social_lines=None):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     multiplier = round(profit / deposit, 1)
 
-    # Use cached rankings instead of fetch_user_stats()
-    social_lines = fetch_cached_rankings()
-    social_text = "\n".join(social_lines)
+    # If caller didn't pass lines, fetch (no live insert here)
+    if social_lines is None:
+        social_lines, _ = fetch_cached_rankings()
 
+    social_text = "\n".join(social_lines)
     mention = random.choice(RANKING_TRADERS)[1]
     tag = "#MemeCoinGains #CryptoTrends" if symbol in MEME_COINS else "#StockMarket #CryptoWins"
     asset_desc = "Meme Coin" if symbol in MEME_COINS else symbol
@@ -676,8 +698,39 @@ def log_post(symbol, content, deposit, profit, user_id=None):
     except Exception as e:
         logger.error(f"Database error: {e}")
 
+
+# -------------------------
+# Announce Winners (Daily, Weekly, Monthly)
+# -------------------------
+async def announce_winner(scope, app):
+    """
+    Announces the top winner for daily/weekly/monthly rankings.
+    """
+    lines = fetch_cached_rankings(scope)
+    if not lines:
+        return
+
+    # Winner is always the first line in the leaderboard
+    winner_line = lines[0]
+    winner_name = winner_line.split("—")[0].split()[-1].strip("</b>")
+    winner_profit = winner_line.split("—")[1].strip()
+
+    msg = (
+        f"🔥 <b>{scope.capitalize()} Winner!</b>\n"
+        f"🏆 {winner_name} secured {winner_profit}!\n\n"
+        f"Join the rankings at Options Trading University!"
+    )
+
+    await app.bot.send_message(
+        chat_id=TELEGRAM_CHAT_ID,
+        text=msg,
+        parse_mode=constants.ParseMode.HTML
+    )
+
 # Background posting loop with mentions every 20 mins
-# Background posting loop with realistic random intervals
+# -------------------------
+# Background posting loop with profit posts, rankings, and winner announcements
+# -------------------------
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
@@ -688,17 +741,17 @@ async def profit_posting_loop(app):
             logger.info(f"Next profit post in {wait_minutes}m at {datetime.now(timezone.utc)}")
             await asyncio.sleep(wait_seconds)
 
-            # 🔀 Pick a symbol
+            # 🔀 Pick symbol: 70% meme coins, 30% stocks/crypto
             if random.random() < 0.7:
                 symbol = random.choice(MEME_COINS)
             else:
                 symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
             
-            # Generate profit scenario
+            # 🎯 Generate profit scenario
             deposit, profit, percentage_gain, reason, trading_style = generate_profit_scenario(symbol)
             msg, reply_markup = craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style)
 
-            # ✅ Post to Telegram
+            # ✅ Post to Telegram group
             try:
                 await app.bot.send_message(
                     chat_id=TELEGRAM_CHAT_ID,
@@ -708,12 +761,17 @@ async def profit_posting_loop(app):
                 )
                 logger.info(f"[PROFIT POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → Profit ${profit:.2f}")
                 log_post(symbol, msg, deposit, profit)
+
+                # 🆕 Pick a random trader name to try for leaderboard insertion
+                trader_id, trader_name = random.choice(RANKING_TRADERS)
+                fetch_cached_rankings(new_name=trader_name, new_profit=profit)
+
             except Exception as e:
                 logger.error(f"Failed to post profit for {symbol}: {e}")
 
             await asyncio.sleep(RATE_LIMIT_SECONDS)
 
-            # 🎯 Occasionally also post rankings/status
+            # 📊 Occasionally also post rankings update (20% chance)
             if random.random() < 0.2:
                 status_msg, status_reply_markup = craft_trade_status()
                 try:
@@ -727,6 +785,14 @@ async def profit_posting_loop(app):
                     log_post(None, status_msg, None, None)
                 except Exception as e:
                     logger.error(f"Failed to post trade status: {e}")
+
+            # 🔔 Occasionally announce winners
+            if random.random() < 0.05:   # 5% chance each cycle
+                await announce_winner("daily", app)
+            if random.random() < 0.02:   # ~2% chance each cycle
+                await announce_winner("weekly", app)
+            if random.random() < 0.01:   # ~1% chance each cycle
+                await announce_winner("monthly", app)
 
         except asyncio.CancelledError:
             logger.info("Profit posting loop cancelled.")
