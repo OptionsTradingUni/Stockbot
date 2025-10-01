@@ -110,22 +110,43 @@ RANKING_TRADERS = [
 ]
 
 # Enhanced Success Story Templates
-SUCCESS_STORIES = {
-    "male": [
-        f"{name} transformed a modest $1,000 investment into an impressive ${random.randint(2000, 10000)} through a meticulously planned swing trade on AAPL. He credits OTU's expert mentorship for honing his disciplined approach and market timing skills over months of practice.",
-        f"{name} turned $500 into a remarkable ${random.randint(2000, 10000)} by mastering the art of BTC HODL. His success stemmed from OTU's detailed market analysis, which accurately forecasted a 150% surge, guiding his patient strategy.",
-        f"{name} flipped an $800 stake into ${random.randint(2000, 10000)} with a bold NIKY pump riding move. He attributes his victory to OTU's vibrant community support, which provided real-time insights and encouragement.",
-        f"{name} achieved a stunning ${random.randint(2000, 10000)} profit from a strategic ETH DCA plan. He praises OTU's step-by-step strategies for revolutionizing his trading career and building his confidence step by step.",
+SUCCESS_STORIES = {"male": [], "female": []}
+
+# Male stories
+for _, name in SUCCESS_TRADERS["male"]:
+    SUCCESS_STORIES["male"].append(
+        f"{name} transformed a modest $1,000 investment into an impressive ${random.randint(2000, 10000)} through a meticulously planned swing trade on AAPL. He credits OTU's expert mentorship for honing his disciplined approach and market timing skills over months of practice."
+    )
+    SUCCESS_STORIES["male"].append(
+        f"{name} turned $500 into a remarkable ${random.randint(2000, 10000)} by mastering the art of BTC HODL. His success stemmed from OTU's detailed market analysis, which accurately forecasted a 150% surge, guiding his patient strategy."
+    )
+    SUCCESS_STORIES["male"].append(
+        f"{name} flipped an $800 stake into ${random.randint(2000, 10000)} with a bold NIKY pump riding move. He attributes his victory to OTU's vibrant community support, which provided real-time insights and encouragement."
+    )
+    SUCCESS_STORIES["male"].append(
+        f"{name} achieved a stunning ${random.randint(2000, 10000)} profit from a strategic ETH DCA plan. He praises OTU's step-by-step strategies for revolutionizing his trading career and building his confidence step by step."
+    )
+    SUCCESS_STORIES["male"].append(
         f"{name} earned ${random.randint(2000, 10000)} through a clever SOL arbitrage play. He highlights OTU's real-time insights as the key to navigating volatile markets with precision and profit."
-    ] for _, name in SUCCESS_TRADERS["male"],
-    "female": [
-        f"{name} grew a $600 investment into ${random.randint(2000, 10000)} with a disciplined TSLA scalping strategy. She attributes her success to OTU's proven techniques and the mentorship that sharpened her quick-decision skills.",
-        f"{name} boosted $700 into ${random.randint(2000, 10000)} with an early sniping move on DOGE. She thanks OTU's timely alerts and community tips for helping her spot the perfect entry point in a fast-moving market.",
-        f"{name} turned $1,500 into ${random.randint(2000, 10000)} via a SHIB community flip. She credits OTU's collaborative environment for her breakthrough, fostering a network that amplified her gains.",
-        f"{name} made ${random.randint(2000, 10000)} from a NVDA position trade. She says, 'OTU's comprehensive resources gave me the confidence to hold long-term and aim for significant returns.'",
+    )
+
+# Female stories
+for _, name in SUCCESS_TRADERS["female"]:
+    SUCCESS_STORIES["female"].append(
+        f"{name} grew a $600 investment into ${random.randint(2000, 10000)} with a disciplined TSLA scalping strategy. She attributes her success to OTU's proven techniques and the mentorship that sharpened her quick-decision skills."
+    )
+    SUCCESS_STORIES["female"].append(
+        f"{name} boosted $700 into ${random.randint(2000, 10000)} with an early sniping move on DOGE. She thanks OTU's timely alerts and community tips for helping her spot the perfect entry point in a fast-moving market."
+    )
+    SUCCESS_STORIES["female"].append(
+        f"{name} turned $1,500 into ${random.randint(2000, 10000)} via a SHIB community flip. She credits OTU's collaborative environment for her breakthrough, fostering a network that amplified her gains."
+    )
+    SUCCESS_STORIES["female"].append(
+        f"{name} made ${random.randint(2000, 10000)} from a NVDA position trade. She says, 'OTU's comprehensive resources gave me the confidence to hold long-term and aim for significant returns.'"
+    )
+    SUCCESS_STORIES["female"].append(
         f"{name} grew $900 into ${random.randint(2000, 10000)} with a GOOGL day trading plan. She calls OTU 'the ultimate trading academy,' crediting its expert guidance for her consistent wins."
-    ] for _, name in SUCCESS_TRADERS["female"]
-}
+    )
 
 # Helper: Fetch recent profits from DB
 def fetch_recent_profits():
