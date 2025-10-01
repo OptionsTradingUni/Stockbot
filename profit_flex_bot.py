@@ -425,18 +425,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+
     if data == "rankings":
         status_msg, status_reply_markup = craft_trade_status()
-        keyboard = [
-            [InlineKeyboardButton("Back", callback_data="back")]
-        ]
+        keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             text=status_msg,
             parse_mode=constants.ParseMode.HTML,
             reply_markup=reply_markup
         )
-        elif data.startswith("success_"):
+
+    elif data.startswith("success_"):
         parts = data.split("_")
 
         # Case 1: "success_male_0"
@@ -476,45 +476,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=constants.ParseMode.HTML,
                 reply_markup=reply_markup
             )
-    parts = data.split("_")
 
-    # Case 1: "success_male_0"
-    if len(parts) == 3:
-        gender, index = parts[1], int(parts[2])
-        action = "show"
-
-    # Case 2: "success_prev_male_0" or "success_next_male_0"
-    elif len(parts) == 4:
-        action, gender, index = parts[1], parts[2], int(parts[3])
-    else:
-        await query.edit_message_text("⚠️ Invalid success story request.")
-        return
-
-    stories = SUCCESS_STORIES[gender]
-    current_index = index
-
-    if action == "prev":
-        current_index = (current_index - 1) % len(stories)
-    elif action == "next":
-        current_index = (current_index + 1) % len(stories)
-
-    story, reply_markup, image_path = craft_success_story(current_index, gender)
-
-    if image_path and os.path.exists(image_path):
-        with open(image_path, 'rb') as photo:
-            await query.message.reply_photo(
-                photo=photo,
-                caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
-                parse_mode=constants.ParseMode.HTML,
-                reply_markup=reply_markup
-            )
-            await query.message.delete()
-    else:
-        await query.edit_message_text(
-            text=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
-            parse_mode=constants.ParseMode.HTML,
-            reply_markup=reply_markup
-        )
     elif data == "terms":
         terms_text = (
             f"📜 <b>Terms of Service</b> 📜\n\n"
@@ -525,15 +487,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"5. Changes to Terms: We may update these terms at any time. Continued use constitutes acceptance.\n\n"
             f"For full terms, visit our website."
         )
-        keyboard = [
-            [InlineKeyboardButton("Back", callback_data="back")]
-        ]
+        keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             text=terms_text,
             parse_mode=constants.ParseMode.HTML,
             reply_markup=reply_markup
         )
+
     elif data == "privacy":
         privacy_text = (
             f"🔒 <b>Privacy Policy</b> 🔒\n\n"
@@ -544,23 +505,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"5. Changes to Policy: We may update this policy. Continued use constitutes acceptance.\n\n"
             f"For full privacy policy, visit our website."
         )
-        keyboard = [
-            [InlineKeyboardButton("Back", callback_data="back")]
-        ]
+        keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             text=privacy_text,
             parse_mode=constants.ParseMode.HTML,
             reply_markup=reply_markup
         )
+
     elif data == "back":
         keyboard = [
-    [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-     InlineKeyboardButton("Success Stories", callback_data=f"success_{random.choice(['male','female'])}_{random.randint(0,4)}")],
-    [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
-     InlineKeyboardButton("Terms of Service", callback_data="terms")],
-    [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
-]
+            [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+             InlineKeyboardButton("Success Stories", callback_data=f"success_{random.choice(['male','female'])}_{random.randint(0,4)}")],
+            [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
+             InlineKeyboardButton("Terms of Service", callback_data="terms")],
+            [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             text="Back to main menu.",
