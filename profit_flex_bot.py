@@ -142,22 +142,24 @@ def initialize_stories():
                 })
             return stories
 
-        logger.info("Generating new success stories...")
+        logger.info("Generating new unique success stories...")
         stories = {"male": [], "female": []}
-        used_numbers = set()
 
+        # Pre-generate unique deposits and profits
+        deposits = random.sample(range(300, 2000, 50), 10)  # 10 unique deposits
+        profits = []
+        for dep in deposits:
+            profit = int(dep * random.uniform(2, 8))
+            # Make sure profit is unique
+            while profit in profits:
+                profit = int(dep * random.uniform(2, 8))
+            profits.append(profit)
+
+        idx = 0
         for gender, traders in SUCCESS_TRADERS.items():
             for _, name, image_file in traders:
-                # Make sure deposit is unique
-                deposit = random.randint(300, 2000)
-                while deposit in used_numbers:
-                    deposit = random.randint(300, 2000)
-                used_numbers.add(deposit)
-
-                profit = int(deposit * random.uniform(2, 8))
-                while profit in used_numbers:
-                    profit = int(deposit * random.uniform(2, 8))
-                used_numbers.add(profit)
+                deposit, profit = deposits[idx], profits[idx]
+                idx += 1
 
                 deposit_str = f"${deposit:,}"
                 profit_str = f"${profit:,}"
@@ -304,23 +306,15 @@ def fetch_cached_rankings():
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache)).fetchone()
-        if row and (now - row.timestamp) < timedelta(hours=5):
+        if row and row.timestamp and (now - row.timestamp) < timedelta(hours=5):
             return row.content.split("\n")
 
-        # If DB empty, use fake rankings
-        try:
-            df = pd.read_sql("SELECT username, total_profit FROM users ORDER BY total_profit DESC LIMIT 10", conn)
-            if df.empty:
-                ranking_data = [(name, round(random.uniform(1000, 20000), 2)) for _, name in random.sample(RANKING_TRADERS, 10)]
-                df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
-        except:
-            ranking_data = [(name, round(random.uniform(1000, 20000), 2)) for _, name in random.sample(RANKING_TRADERS, 10)]
-            df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
+        # Always use your fixed names (RANKING_TRADERS)
+        ranking_data = [(name, round(random.uniform(2000, 15000), 2)) for _, name in random.sample(RANKING_TRADERS, 10)]
 
-        lines = [f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit"
-                 for i, (_, r) in enumerate(df.iterrows(), 1)]
+        lines = [f"{i}. {username} — ${profit:,.2f} profit" for i, (username, profit) in enumerate(ranking_data, 1)]
 
-        # Save cache
+        # Save to cache for 5 hours
         conn.execute(delete(rankings_cache))
         conn.execute(insert(rankings_cache).values(content="\n".join(lines), timestamp=now))
 
@@ -474,7 +468,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Welcome, {name}!\n\n"
         f"At Options Trading University, we provide expert-led training, real-time market analysis, "
         f"and a thriving community of successful traders. Our proven strategies have helped members achieve "
-        f"consistent gains, with profit updates shared every 20-40 minutes.\n"
+        f"consistent gains, with profit updates shared.\n"
         f"Why join us?\n"
         f"- Access to high-probability trades (up to 900% gains on meme coins).\n"
         f"- Guidance from top traders with a track record of success.\n"
