@@ -43,6 +43,7 @@ SWING_TRADE_INTERVAL_MINUTES = int(os.getenv("SWING_TRADE_INTERVAL_MINUTES", "20
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///profit_flex.db")
 WEBSITE_URL = os.getenv("WEBSITE_URL", "https://optionstradinguni.online/")
 RATE_LIMIT_SECONDS = float(os.getenv("RATE_LIMIT_SECONDS", "5"))
+IMAGE_DIR = os.getenv("IMAGE_DIR", "images/")  # Directory for images (e.g., images/man1.jpeg)
 
 # Initialize DB engine and auto-create tables
 engine = create_engine(DATABASE_URL, future=True)
@@ -73,39 +74,58 @@ metadata.create_all(engine)
 # Telegram Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
 
-# Expanded Realistic Trader Names
-REALISTIC_TRADER_NAMES = [
-    ("JohnDoeTrader", "John Doe"),
-    ("JaneSmithPro", "Jane Smith"),
-    ("AlexJohnson", "Alex Johnson"),
-    ("EmilyDavis", "Emily Davis"),
-    ("MichaelBrown", "Michael Brown"),
-    ("SarahWilson", "Sarah Wilson"),
-    ("DavidMiller", "David Miller"),
-    ("LauraTaylor", "Laura Taylor"),
-    ("ChrisAnderson", "Chris Anderson"),
-    ("AnnaMartinez", "Anna Martinez"),
-    ("RobertGarcia", "Robert Garcia"),
-    ("OliviaHernandez", "Olivia Hernandez"),
-    ("JamesLopez", "James Lopez"),
-    ("SophiaGonzalez", "Sophia Gonzalez"),
-    ("WilliamRodriguez", "William Rodriguez"),
-    ("MiaMartinez", "Mia Martinez"),
-    ("DanielPerez", "Daniel Perez"),
-    ("IsabellaSanchez", "Isabella Sanchez"),
-    ("MatthewRamirez", "Matthew Ramirez"),
-    ("CharlotteTorres", "Charlotte Torres"),
-    ("EthanLee", "Ethan Lee"),
-    ("AvaKing", "Ava King"),
-    ("BenjaminScott", "Benjamin Scott"),
-    ("GraceAdams", "Grace Adams"),
-    ("LucasBaker", "Lucas Baker"),
-    ("ChloeYoung", "Chloe Young"),
-    ("HenryAllen", "Henry Allen"),
-    ("EllaWright", "Ella Wright"),
-    ("SamuelGreen", "Samuel Green"),
-    ("VictoriaHarris", "Victoria Harris"),
+# Selected Traders for Success Stories (5 Male, 5 Female)
+SUCCESS_TRADERS = {
+    "male": [
+        ("JohnDoeTrader", "John Doe"),
+        ("AlexJohnson", "Alex Johnson"),
+        ("MichaelBrown", "Michael Brown"),
+        ("DavidMiller", "David Miller"),
+        ("ChrisAnderson", "Chris Anderson")
+    ],
+    "female": [
+        ("JaneSmithPro", "Jane Smith"),
+        ("EmilyDavis", "Emily Davis"),
+        ("SarahWilson", "Sarah Wilson"),
+        ("LauraTaylor", "Laura Taylor"),
+        ("AnnaMartinez", "Anna Martinez")
+    ]
+}
+
+# Expanded Trader Names for Rankings
+RANKING_TRADERS = [
+    ("RobertGarcia", "Robert Garcia"), ("OliviaHernandez", "Olivia Hernandez"),
+    ("JamesLopez", "James Lopez"), ("SophiaGonzalez", "Sophia Gonzalez"),
+    ("WilliamRodriguez", "William Rodriguez"), ("MiaMartinez", "Mia Martinez"),
+    ("DanielPerez", "Daniel Perez"), ("IsabellaSanchez", "Isabella Sanchez"),
+    ("MatthewRamirez", "Matthew Ramirez"), ("CharlotteTorres", "Charlotte Torres"),
+    ("EthanLee", "Ethan Lee"), ("AvaKing", "Ava King"),
+    ("BenjaminScott", "Benjamin Scott"), ("GraceAdams", "Grace Adams"),
+    ("LucasBaker", "Lucas Baker"), ("ChloeYoung", "Chloe Young"),
+    ("HenryAllen", "Henry Allen"), ("EllaWright", "Ella Wright"),
+    ("SamuelGreen", "Samuel Green"), ("VictoriaHarris", "Victoria Harris"),
+    ("ThomasClark", "Thomas Clark"), ("EmmaWhite", "Emma White"),
+    ("JosephTurner", "Joseph Turner"), ("LilyHall", "Lily Hall"),
+    ("NathanielReed", "Nathaniel Reed"), ("ZoeParker", "Zoe Parker")
 ]
+
+# Enhanced Success Story Templates
+SUCCESS_STORIES = {
+    "male": [
+        f"{name} transformed a modest $1,000 investment into an impressive ${random.randint(2000, 10000)} through a meticulously planned swing trade on AAPL. He credits OTU's expert mentorship for honing his disciplined approach and market timing skills over months of practice.",
+        f"{name} turned $500 into a remarkable ${random.randint(2000, 10000)} by mastering the art of BTC HODL. His success stemmed from OTU's detailed market analysis, which accurately forecasted a 150% surge, guiding his patient strategy.",
+        f"{name} flipped an $800 stake into ${random.randint(2000, 10000)} with a bold NIKY pump riding move. He attributes his victory to OTU's vibrant community support, which provided real-time insights and encouragement.",
+        f"{name} achieved a stunning ${random.randint(2000, 10000)} profit from a strategic ETH DCA plan. He praises OTU's step-by-step strategies for revolutionizing his trading career and building his confidence step by step.",
+        f"{name} earned ${random.randint(2000, 10000)} through a clever SOL arbitrage play. He highlights OTU's real-time insights as the key to navigating volatile markets with precision and profit."
+    ] for _, name in SUCCESS_TRADERS["male"],
+    "female": [
+        f"{name} grew a $600 investment into ${random.randint(2000, 10000)} with a disciplined TSLA scalping strategy. She attributes her success to OTU's proven techniques and the mentorship that sharpened her quick-decision skills.",
+        f"{name} boosted $700 into ${random.randint(2000, 10000)} with an early sniping move on DOGE. She thanks OTU's timely alerts and community tips for helping her spot the perfect entry point in a fast-moving market.",
+        f"{name} turned $1,500 into ${random.randint(2000, 10000)} via a SHIB community flip. She credits OTU's collaborative environment for her breakthrough, fostering a network that amplified her gains.",
+        f"{name} made ${random.randint(2000, 10000)} from a NVDA position trade. She says, 'OTU's comprehensive resources gave me the confidence to hold long-term and aim for significant returns.'",
+        f"{name} grew $900 into ${random.randint(2000, 10000)} with a GOOGL day trading plan. She calls OTU 'the ultimate trading academy,' crediting its expert guidance for her consistent wins."
+    ] for _, name in SUCCESS_TRADERS["female"]
+}
 
 # Helper: Fetch recent profits from DB
 def fetch_recent_profits():
@@ -195,6 +215,10 @@ def fetch_user_stats():
     try:
         with engine.connect() as conn:
             df = pd.read_sql("SELECT username, total_profit FROM users ORDER BY total_profit DESC LIMIT 10", conn)
+            if df.empty:
+                # Generate random stats for ranking traders if no data
+                ranking_data = [(name, random.uniform(1000, 10000)) for _, name in random.sample(RANKING_TRADERS, 10)]
+                df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
             return df
     except Exception as e:
         logger.error(f"Database error: {e}")
@@ -209,10 +233,10 @@ def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, tradi
     for i, (_, r) in enumerate(user_df.iterrows(), 1):
         social_lines.append(f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit")
     if user_df.empty:
-        social_lines = [f"{i}. {random.choice(REALISTIC_TRADER_NAMES)[1]} — ${random.randint(1000,5000):,.2f} profit" for i in range(1, 11)]
+        social_lines = [f"{i}. {random.choice(RANKING_TRADERS)[1]} — ${random.randint(1000,5000):,.2f} profit" for i in range(1, 11)]
     
     social_text = "\n".join(social_lines)
-    mention = random.choice(REALISTIC_TRADER_NAMES)[1]  # Mention a random trader
+    mention = random.choice(RANKING_TRADERS)[1]
     tag = "#MemeCoinGains #CryptoTrends" if symbol in MEME_COINS else "#StockMarket #CryptoWins"
     asset_desc = "Meme Coin" if symbol in MEME_COINS else symbol
     templates = [
@@ -228,60 +252,27 @@ def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, tradi
             f"👉 Shoutout to {mention} for inspiring us!\n\n"
             f"Join us at Options Trading University for more insights! {tag}"
         ),
-        (
-            f"📊 <b>{symbol} Trade Success</b> 📊\n"
-            f"{trading_style} on {asset_desc} paid off!\n"
-            f"💵 Started with: ${deposit:,.2f}\n"
-            f"💰 Secured: ${profit:,.2f} ({multiplier}x!)\n"
-            f"🚀 {reason}\n"
-            f"📈 {percentage_gain}% gain achieved!\n"
-            f"Time: {ts}\n\n"
-            f"🏆 Top Trader Rankings:\n{social_text}\n"
-            f"👉 Kudos to {mention} for the winning strategy!\n\n"
-            f"Discover more at Options Trading University! {tag}"
-        ),
-        (
-            f"💥 <b>{symbol} Gain Alert</b> 💥\n"
-            f"{trading_style} on {asset_desc} delivered!\n"
-            f"💸 Invested: ${deposit:,.2f}\n"
-            f"🤑 Realized: ${profit:,.2f} ({multiplier}x gain!)\n"
-            f"🔥 {reason}\n"
-            f"📈 Secured {percentage_gain}% ROI!\n"
-            f"Time: {ts}\n\n"
-            f"🏆 Top Trader Rankings:\n{social_text}\n"
-            f"👉 Big props to {mention} for leading the charge!\n\n"
-            f"Learn more at Options Trading University! {tag}"
-        ),
     ]
     keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings")],
-        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
+        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+         InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     return random.choice(templates), reply_markup
 
-# Craft a success story
-def craft_success_story():
-    name = random.choice(REALISTIC_TRADER_NAMES)[1]
-    profit = random.randint(2000, 10000)
-    story_templates = [
-        f"{name} turned $1,000 into ${profit} with a brilliant swing trade on AAPL, crediting OTU's expert guidance for their disciplined approach.",
-        f"{name} grew $500 into ${profit} by mastering BTC HODL, thanks to OTU's market analysis that predicted a 150% surge.",
-        f"{name} flipped $800 into ${profit} with NIKY pump riding, calling OTU's community support 'the secret to my success.'",
-        f"{name} achieved ${profit} profit from ETH DCA, stating, 'OTU's step-by-step strategies transformed my trading career.'",
-        f"{name} earned ${profit} through SOL arbitrage, praising OTU's real-time insights for navigating volatile markets.",
-        f"{name} scaled $1,200 to ${profit} with TSLA scalping, attributing their win to OTU's proven techniques and mentorship.",
-        f"{name} boosted $700 to ${profit} on DOGE with early sniping, thanks to OTU's timely alerts and community tips.",
-        f"{name} turned $1,500 into ${profit} via SHIB community flips, crediting OTU's collaborative environment for their breakthrough.",
-        f"{name} made ${profit} from NVDA position trading, saying, 'OTU's resources gave me the confidence to aim high.'",
-        f"{name} grew $900 to ${profit} with GOOGL day trading, calling OTU 'the ultimate trading academy I needed.'",
-        f"{name} generated ${profit} from META swing trades, 'OTU's expert mentorship was key to my consistent wins.'",
-        f"{name} built $600 into ${profit} with SOL leverage trading, crediting OTU's risk management lessons.",
-        f"{name} achieved ${profit} from AMZN scalping, 'OTU's community helped me spot the perfect entry points.'",
-        f"{name} turned $1,200 into ${profit} with BTC arbitrage, 'OTU's strategies are gold for crypto traders.'",
-        f"{name} earned ${profit} from NIKY airdrop hunts, 'OTU's alerts made all the difference.'",
+# Craft a success story with navigation
+def craft_success_story(current_index, gender):
+    stories = SUCCESS_STORIES[gender]
+    name, _ = SUCCESS_TRADERS[gender][current_index]
+    story = stories[current_index]
+    image_path = os.path.join(IMAGE_DIR, f"{gender}{current_index + 1}.jpeg")  # e.g., man1.jpeg, woman1.jpeg
+    keyboard = [
+        [InlineKeyboardButton("Back", callback_data=f"success_prev_{gender}_{current_index}")],
+        [InlineKeyboardButton("Next", callback_data=f"success_next_{gender}_{current_index}")],
+        [InlineKeyboardButton("Back to Menu", callback_data="back")]
     ]
-    return random.choice(story_templates)
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    return story, reply_markup, image_path if os.path.exists(image_path) else None
 
 # Craft trade status message with success story
 def craft_trade_status():
@@ -291,17 +282,15 @@ def craft_trade_status():
     for i, (_, r) in enumerate(user_df.iterrows(), 1):
         social_lines.append(f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit")
     if user_df.empty:
-        social_lines = [f"{i}. {random.choice(REALISTIC_TRADER_NAMES)[1]} — ${random.randint(1000,5000):,.2f} profit" for i in range(1, 11)]
+        social_lines = [f"{i}. {random.choice(RANKING_TRADERS)[1]} — ${random.randint(1000,5000):,.2f} profit" for i in range(1, 11)]
     
     social_text = "\n".join(social_lines)
-    success_story = craft_success_story()
     return (
         f"🏆 <b>Top Trader Rankings</b> 🏆\n"
         f"As of {ts}:\n"
         f"{social_text}\n\n"
-        f"📖 <b>Success Story</b>: {success_story}\n\n"
         f"Join the community at Options Trading University for more trading insights! #TradingCommunity"
-    ), InlineKeyboardMarkup([[InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]]), success_story
+    ), InlineKeyboardMarkup([[InlineKeyboardButton("Back", callback_data="back")]])
 
 # Log post content to DB and update user profits
 def log_post(symbol, content, deposit, profit, user_id=None):
@@ -324,14 +313,13 @@ async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
         try:
-            wait_minutes = 20  # Fixed to 20 minutes for consistent mentions
+            wait_minutes = 20
             wait_seconds = wait_minutes * 60
             logger.info(f"Next profit post in {wait_minutes}m at {datetime.now(timezone.utc)}")
             await asyncio.sleep(wait_seconds)
 
-            # Ensure meme coin posts every cycle
-            symbol = random.choice(MEME_COINS)  # Prioritize meme coins
-            if random.random() < 0.7:  # 70% chance for meme coin, 30% for others
+            symbol = random.choice(MEME_COINS)
+            if random.random() < 0.7:
                 symbol = random.choice(MEME_COINS)
             else:
                 symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
@@ -352,7 +340,7 @@ async def profit_posting_loop(app):
             await asyncio.sleep(RATE_LIMIT_SECONDS)
 
             if random.random() < 0.2:
-                status_msg, status_reply_markup, success_story = craft_trade_status()
+                status_msg, status_reply_markup = craft_trade_status()
                 try:
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
@@ -378,10 +366,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
     keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings")],
-        [InlineKeyboardButton("Success Stories", callback_data="success")],
-        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL)],
-        [InlineKeyboardButton("Terms of Service", callback_data="terms")],
+        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+         InlineKeyboardButton("Success Stories", callback_data="success_male_0")],
+        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
+         InlineKeyboardButton("Terms of Service", callback_data="terms")],
         [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -415,7 +403,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if query.data == "rankings":
+    data = query.data
+    if data == "rankings":
         status_msg, status_reply_markup = craft_trade_status()
         keyboard = [
             [InlineKeyboardButton("Back", callback_data="back")]
@@ -426,18 +415,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML,
             reply_markup=reply_markup
         )
-    elif query.data == "success":
-        success_story = craft_success_story()
-        keyboard = [
-            [InlineKeyboardButton("Back", callback_data="back")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            text=f"📖 <b>Success Story</b>:\n{success_story}\n\nJoin Options Trading University to start your own journey!",
-            parse_mode=constants.ParseMode.HTML,
-            reply_markup=reply_markup
-        )
-    elif query.data == "terms":
+    elif data.startswith("success_"):
+        gender, action, index = data.split("_")[1], data.split("_")[2], int(data.split("_")[3])
+        stories = SUCCESS_STORIES[gender]
+        current_index = index
+        if action == "prev":
+            current_index = (current_index - 1) % len(stories)
+        elif action == "next":
+            current_index = (current_index + 1) % len(stories)
+        story, reply_markup, image_path = craft_success_story(current_index, gender)
+        if image_path and os.path.exists(image_path):
+            with open(image_path, 'rb') as photo:
+                await query.message.reply_photo(
+                    photo=photo,
+                    caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
+                    parse_mode=constants.ParseMode.HTML,
+                    reply_markup=reply_markup
+                )
+                await query.message.delete()
+        else:
+            await query.edit_message_text(
+                text=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+    elif data == "terms":
         terms_text = (
             f"📜 <b>Terms of Service</b> 📜\n\n"
             f"1. Acceptance of Terms: By using this bot, you agree to abide by these Terms of Service.\n"
@@ -456,7 +458,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML,
             reply_markup=reply_markup
         )
-    elif query.data == "privacy":
+    elif data == "privacy":
         privacy_text = (
             f"🔒 <b>Privacy Policy</b> 🔒\n\n"
             f"1. Information Collected: We collect minimal data such as user IDs and usernames for bot functionality.\n"
@@ -475,13 +477,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML,
             reply_markup=reply_markup
         )
-    elif query.data == "back":
-        # Back to main menu (e.g., start keyboard)
+    elif data == "back":
         keyboard = [
-            [InlineKeyboardButton("View Rankings", callback_data="rankings")],
-            [InlineKeyboardButton("Success Stories", callback_data="success")],
-            [InlineKeyboardButton("Visit Website", url=WEBSITE_URL)],
-            [InlineKeyboardButton("Terms of Service", callback_data="terms")],
+            [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+             InlineKeyboardButton("Success Stories", callback_data="success_male_0")],
+            [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
+             InlineKeyboardButton("Terms of Service", callback_data="terms")],
             [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -501,8 +502,8 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Join the action at Options Trading University! #TradingCommunity"
     )
     keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings")],
-        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
+        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+         InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(
@@ -523,8 +524,8 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Profit updates auto-post every 20-40 minutes. Join us at Options Trading University! #TradingSuccess"
     )
     keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings")],
-        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
+        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+         InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(
