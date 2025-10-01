@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 import pandas as pd
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler  # Added CallbackQueryHandler
 
 # Setup logging
 log_dir = "logs"
@@ -113,9 +113,9 @@ def generate_profit_scenario(symbol):
     if symbol in MEME_COINS:
         deposit_options = [
             (309, 700),
-            (700, random.choice([5000, 6000, 7000])),
-            (1000, 11000),
-            (1500, random.randint(5000, 12000)),
+            (700, random.choice([1200, 1500, 1800])),
+            (1000, 2000),
+            (1500, random.randint(3000, 6000)),
         ]
         max_attempts = 10
         for _ in range(max_attempts):
@@ -124,15 +124,15 @@ def generate_profit_scenario(symbol):
                 break
         else:
             deposit = 1500
-            target_profit = random.randint(5000, 12000)
+            target_profit = random.randint(3000, 6000)
             while target_profit in recent_profits:
-                target_profit = random.randint(5000, 12000)
+                target_profit = random.randint(3000, 6000)
     else:
         deposit_options = [
-            (209, 1000),
-            (509, 4000),
-            (500, random.randint(600, 1500)),
-            (1000, random.randint(1200, 3000)),
+            (209, 300),
+            (509, 800),
+            (500, random.randint(600, 1000)),
+            (1000, random.randint(1200, 2000)),
         ]
         max_attempts = 10
         for _ in range(max_attempts):
@@ -141,9 +141,9 @@ def generate_profit_scenario(symbol):
                 break
         else:
             deposit = 500
-            target_profit = random.randint(600, 1500)
+            target_profit = random.randint(600, 1000)
             while target_profit in recent_profits:
-                target_profit = random.randint(600, 1500)
+                target_profit = random.randint(600, 1000)
     
     multiplier = target_profit / deposit
     percentage_gain = round((multiplier - 1) * 100, 1)
@@ -339,13 +339,12 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     welcome_text = (
         f"Welcome, {name}!\n\n"
-        f"At Options Trading University, we empower traders like you with proven strategies, expert mentorship, and a supportive community to achieve consistent profits.\n"
-        f"Join us to learn from real success stories, master market trends, and grow your portfolio confidently.\n\n"
-        f"Why join?\n"
-        f"- Access to high-win-rate trades (up to 200% gains).\n"
-        f"- Community of 0+ members sharing insights.\n"
-        f"- Real-time updates on stocks, crypto, and meme coins.\n\n"
-        f"Start your journey today!"
+        f"At Options Trading University, we provide expert-led training, real-time market analysis, and a thriving community of successful traders. Our proven strategies have helped members achieve consistent gains, with profit updates shared every 20-40 minutes.\n"
+        f"Why join us?\n"
+        f"- Access to high-probability trades (up to 900% gains on meme coins).\n"
+        f"- Guidance from top traders with a track record of success.\n"
+        f"- Exclusive insights on stocks, crypto, and meme coins.\n\n"
+        f"Start your journey to financial growth today!"
     )
     await context.bot.send_message(
         chat_id=chat_id,
