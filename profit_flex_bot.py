@@ -309,7 +309,6 @@ def fetch_cached_rankings():
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache)).fetchone()
         if row:
-            # Ensure DB timestamp is timezone-aware
             ts = row.timestamp
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
@@ -317,15 +316,23 @@ def fetch_cached_rankings():
             if (now - ts) < timedelta(hours=5):
                 return row.content.split("\n")
 
-        # Generate fresh rankings
-        ranking_data = [(name, int(random.uniform(1000, 20000) // 50 * 50))  # rounded
-                        for _, name in random.sample(RANKING_TRADERS, 10)]
+        # Generate fresh rankings (10 random traders)
+        ranking_data = [
+            (name, int(random.uniform(1000, 20000) // 50 * 50))
+            for _, name in random.sample(RANKING_TRADERS, 10)
+        ]
         df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
 
-        lines = [f"{i}. {r['username']} — ${r['total_profit']:,} profit"
-                 for i, r in df.iterrows()]
+        # ✅ Add medals for top 3
+        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
 
-        # Save in cache with UTC-aware timestamp
+        lines = []
+        for i, r in enumerate(df.itertuples(index=False), start=1):
+            medal = medals.get(i, f"{i}.")
+            line = f"{medal} {r.username} — ${r.total_profit:,} profit"
+            lines.append(line)
+
+        # Save in cache
         conn.execute(delete(rankings_cache))
         conn.execute(insert(rankings_cache).values(
             content="\n".join(lines),
