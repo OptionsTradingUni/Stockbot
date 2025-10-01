@@ -494,12 +494,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     random_index = random.randint(0, total_stories - 1)
 
     keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-         InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
-        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
-         InlineKeyboardButton("Terms of Service", callback_data="terms")],
-        [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
-    ]
+    [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+     InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
+    [InlineKeyboardButton("📢 Join Profit Group", url="https://t.me/+v2cZ4q1DXNdkMjI8")],
+    [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
+     InlineKeyboardButton("Terms of Service", callback_data="terms")],
+    [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
+]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     welcome_text = (
