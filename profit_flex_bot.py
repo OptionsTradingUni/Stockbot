@@ -234,46 +234,26 @@ def fetch_recent_profits():
 # Helper: Generate profit scenario with realistic gains
 def generate_profit_scenario(symbol):
     recent_profits = fetch_recent_profits()
-    
+
     if symbol in MEME_COINS:
-        deposit_options = [
-            (309, 700),
-            (700, random.choice([1200, 1500, 1800])),
-            (1000, 2000),
-            (1500, random.randint(3000, 6000)),
-        ]
-        max_attempts = 10
-        for _ in range(max_attempts):
-            deposit, target_profit = random.choice(deposit_options)
-            if target_profit not in recent_profits:
-                break
-        else:
-            deposit = 1500
-            target_profit = random.randint(3000, 6000)
-            while target_profit in recent_profits:
-                target_profit = random.randint(3000, 6000)
+        # ✅ Meme coins: 2x – 20x
+        deposit = random.choice([300, 500, 700, 1000, 1500])
+        profit = None
+        while not profit or profit in recent_profits:
+            raw_profit = deposit * random.uniform(2, 20)
+            profit = int(raw_profit // 50 * 50)  # round to nearest 50
     else:
-        deposit_options = [
-            (209, 300),
-            (509, 800),
-            (500, random.randint(600, 1000)),
-            (1000, random.randint(1200, 2000)),
-        ]
-        max_attempts = 10
-        for _ in range(max_attempts):
-            deposit, target_profit = random.choice(deposit_options)
-            if target_profit not in recent_profits:
-                break
-        else:
-            deposit = 500
-            target_profit = random.randint(600, 1000)
-            while target_profit in recent_profits:
-                target_profit = random.randint(600, 1000)
-    
-    multiplier = target_profit / deposit
+        # ✅ Stocks & Crypto: 2x – 6x
+        deposit = random.choice([300, 500, 700, 1000])
+        profit = None
+        while not profit or profit in recent_profits:
+            raw_profit = deposit * random.uniform(2, 6)
+            profit = int(raw_profit // 50 * 50)
+
+    multiplier = profit / deposit
     percentage_gain = round((multiplier - 1) * 100, 1)
     price_increase = int(percentage_gain * random.uniform(0.8, 1.2))
-    
+
     if symbol in STOCK_SYMBOLS:
         trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
         reasons = [
@@ -301,8 +281,8 @@ def generate_profit_scenario(symbol):
             f"Strategic {trading_style} yielded {price_increase}% on {symbol}!",
             f"{symbol} rose {price_increase}% with smart timing!",
         ]
-    
-    return deposit, target_profit, percentage_gain, random.choice(reasons), trading_style
+
+    return deposit, profit, percentage_gain, random.choice(reasons), trading_style
 
 def fetch_cached_rankings():
     now = datetime.now(timezone.utc)
