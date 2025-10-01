@@ -21,6 +21,65 @@ from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, 
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
 
+# ---- Uniqueness tracking (cooldowns) ----
+used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
+used_profits: dict[int, float] = {}   # value -> last_used_timestamp
+
+DEPOSIT_TTL_SECONDS = 6 * 60 * 60     # 6 hours
+PROFIT_TTL_SECONDS  = 12 * 60 * 60    # 12 hours
+
+def _prune_used(used_dict: dict[int, float], ttl_seconds: int) -> None:
+    """Remove entries older than ttl_seconds."""
+    now = datetime.now().timestamp()
+    stale = [v for v, ts in used_dict.items() if (now - ts) > ttl_seconds]
+    for v in stale:
+        used_dict.pop(v, None)
+
+def _unique_deposit(min_val: int, max_val: int) -> int:
+    """
+    Return a deposit that hasn't been used recently.
+    No rounding — leaves 'organic' numbers like 817, 1045, etc.
+    """
+    _prune_used(used_deposits, DEPOSIT_TTL_SECONDS)
+    now = datetime.now().timestamp()
+
+    # Try a bunch of times to get a fresh one
+    for _ in range(200):
+        dep = random.randint(min_val, max_val)
+        if dep not in used_deposits:
+            used_deposits[dep] = now
+            return dep
+
+    # Fallback: allow reuse of the least-recently used value
+    oldest_val = min(used_deposits.items(), key=lambda x: x[1])[0]
+    used_deposits[oldest_val] = now
+    return oldest_val
+
+def _unique_profit(candidate_fn) -> int:
+    """
+    Generate a profit that isn't in recent DB rows or recent cooldown.
+    Rounds to the nearest 50 to look realistic.
+    """
+    _prune_used(used_profits, PROFIT_TTL_SECONDS)
+    now = datetime.now().timestamp()
+    recent = fetch_recent_profits()  # your existing DB helper
+
+    for _ in range(500):
+        raw = candidate_fn()
+        prof = int(raw // 50 * 50)
+        if prof not in recent and prof not in used_profits:
+            used_profits[prof] = now
+            return prof
+
+    # Fallback: reuse the least-recently used profit
+    if used_profits:
+        oldest_val = min(used_profits.items(), key=lambda x: x[1])[0]
+        used_profits[oldest_val] = now
+        return oldest_val
+
+    # Last resort if everything else failed
+    return int(candidate_fn() // 50 * 50)
+
 # Setup logging
 log_dir = "logs"
 os.makedirs(log_dir, exist_ok=True)
@@ -188,19 +247,108 @@ TRADER_STORIES = initialize_stories()
 
 # Expanded Trader Names for Rankings
 RANKING_TRADERS = [
-    ("RobertGarcia", "Robert Garcia"), ("OliviaHernandez", "Olivia Hernandez"),
-    ("JamesLopez", "James Lopez"), ("SophiaGonzalez", "Sophia Gonzalez"),
-    ("WilliamRodriguez", "William Rodriguez"), ("MiaMartinez", "Mia Martinez"),
-    ("DanielPerez", "Daniel Perez"), ("IsabellaSanchez", "Isabella Sanchez"),
-    ("MatthewRamirez", "Matthew Ramirez"), ("CharlotteTorres", "Charlotte Torres"),
-    ("EthanLee", "Ethan Lee"), ("AvaKing", "Ava King"),
-    ("BenjaminScott", "Benjamin Scott"), ("GraceAdams", "Grace Adams"),
-    ("LucasBaker", "Lucas Baker"), ("ChloeYoung", "Chloe Young"),
-    ("HenryAllen", "Henry Allen"), ("EllaWright", "Ella Wright"),
-    ("SamuelGreen", "Samuel Green"), ("VictoriaHarris", "Victoria Harris"),
-    ("ThomasClark", "Thomas Clark"), ("EmmaWhite", "Emma White"),
-    ("JosephTurner", "Joseph Turner"), ("LilyHall", "Lily Hall"),
-    ("NathanielReed", "Nathaniel Reed"), ("ZoeParker", "Zoe Parker")
+    # Male Traders
+    ("RobertGarcia", "Robert Garcia"), ("JamesLopez", "James Lopez"),
+    ("WilliamRodriguez", "William Rodriguez"), ("DanielPerez", "Daniel Perez"),
+    ("MatthewRamirez", "Matthew Ramirez"), ("EthanLee", "Ethan Lee"),
+    ("BenjaminScott", "Benjamin Scott"), ("LucasBaker", "Lucas Baker"),
+    ("HenryAllen", "Henry Allen"), ("SamuelGreen", "Samuel Green"),
+    ("ThomasClark", "Thomas Clark"), ("JosephTurner", "Joseph Turner"),
+    ("NathanielReed", "Nathaniel Reed"), ("AnthonyKing", "Anthony King"),
+    ("DavidWright", "David Wright"), ("ChristopherHill", "Christopher Hill"),
+    ("JonathanMitchell", "Jonathan Mitchell"), ("PatrickYoung", "Patrick Young"),
+    ("JasonAdams", "Jason Adams"), ("KevinRoberts", "Kevin Roberts"),
+    ("RyanNelson", "Ryan Nelson"), ("BrandonWalker", "Brandon Walker"),
+    ("TylerScott", "Tyler Scott"), ("ZacharyMoore", "Zachary Moore"),
+    ("ConnorWhite", "Connor White"), ("ShawnHarris", "Shawn Harris"),
+    ("JustinReyes", "Justin Reyes"), ("DerekParker", "Derek Parker"),
+    ("LoganBarnes", "Logan Barnes"), ("MasonBrooks", "Mason Brooks"),
+    ("JordanFoster", "Jordan Foster"), ("ElijahCarter", "Elijah Carter"),
+    ("CalebEvans", "Caleb Evans"), ("OwenMurphy", "Owen Murphy"),
+    ("GavinDiaz", "Gavin Diaz"), ("NoahHughes", "Noah Hughes"),
+    ("ColeSimmons", "Cole Simmons"), ("HunterButler", "Hunter Butler"),
+    ("ChaseLong", "Chase Long"), ("MicahHayes", "Micah Hayes"),
+    ("AdrianRoss", "Adrian Ross"), ("VictorColeman", "Victor Coleman"),
+    ("XavierMorgan", "Xavier Morgan"), ("DominicGray", "Dominic Gray"),
+    ("IsaacPeterson", "Isaac Peterson"), ("LeviWard", "Levi Ward"),
+    ("MilesWatson", "Miles Watson"), ("MaxwellHoward", "Maxwell Howard"),
+    ("JulianPrice", "Julian Price"), ("ChristianSanders", "Christian Sanders"),
+    ("LiamHenderson", "Liam Henderson"), ("NicholasGibson", "Nicholas Gibson"),
+    ("DiegoFernandez", "Diego Fernandez"), ("CarlosMendez", "Carlos Mendez"),
+    ("JavierOrtega", "Javier Ortega"), ("LuisCastillo", "Luis Castillo"),
+    ("MateoVargas", "Mateo Vargas"), ("AndresMorales", "Andres Morales"),
+    ("JoseMartinez", "Jose Martinez"), ("PedroLopez", "Pedro Lopez"),
+    ("VictorSantos", "Victor Santos"), ("RicardoAlvarez", "Ricardo Alvarez"),
+    ("AhmedKhalid", "Ahmed Khalid"), ("OmarHassan", "Omar Hassan"),
+    ("KarimAli", "Karim Ali"), ("YoussefSalem", "Youssef Salem"),
+    ("IbrahimMahmoud", "Ibrahim Mahmoud"), ("AbdulRahman", "Abdul Rahman"),
+    ("MustafaFarouk", "Mustafa Farouk"), ("HassanOmar", "Hassan Omar"),
+    ("KwameMensah", "Kwame Mensah"), ("ChineduOkafor", "Chinedu Okafor"),
+    ("SamuelAdeyemi", "Samuel Adeyemi"), ("OluwaseunAkin", "Oluwaseun Akin"),
+    ("EmekaNwosu", "Emeka Nwosu"), ("JosephBello", "Joseph Bello"),
+    ("MichaelOkon", "Michael Okon"), ("DanielChukwu", "Daniel Chukwu"),
+    ("KenjiTanaka", "Kenji Tanaka"), ("HiroshiYamamoto", "Hiroshi Yamamoto"),
+    ("TakashiKobayashi", "Takashi Kobayashi"), ("SatoshiNakamura", "Satoshi Nakamura"),
+    ("DaichiFujimoto", "Daichi Fujimoto"), ("MinHoPark", "Min Ho Park"),
+    ("JaeWooKim", "Jae Woo Kim"), ("SungHoLee", "Sung Ho Lee"),
+    ("HirokiSuzuki", "Hiroki Suzuki"), ("YutoMatsumoto", "Yuto Matsumoto"),
+    ("RaviKumar", "Ravi Kumar"), ("ArjunPatel", "Arjun Patel"),
+    ("VikramSharma", "Vikram Sharma"), ("AnilMehta", "Anil Mehta"),
+    ("RajeshSingh", "Rajesh Singh"), ("SanjayGupta", "Sanjay Gupta"),
+    ("ChenWei", "Chen Wei"), ("LiMing", "Li Ming"),
+    ("WangJun", "Wang Jun"), ("ZhaoLei", "Zhao Lei"),
+    ("SunHao", "Sun Hao"), ("ZhangYong", "Zhang Yong"),
+    ("DmitriIvanov", "Dmitri Ivanov"), ("SergeiPetrov", "Sergei Petrov"),
+    ("AlexeiVolkov", "Alexei Volkov"), ("ViktorSmirnov", "Viktor Smirnov"),
+    ("NikolaiPopov", "Nikolai Popov"), ("AndreiSokolov", "Andrei Sokolov"),
+
+    # Female Traders
+    ("OliviaHernandez", "Olivia Hernandez"), ("SophiaGonzalez", "Sophia Gonzalez"),
+    ("MiaMartinez", "Mia Martinez"), ("IsabellaSanchez", "Isabella Sanchez"),
+    ("CharlotteTorres", "Charlotte Torres"), ("AvaKing", "Ava King"),
+    ("GraceAdams", "Grace Adams"), ("ChloeYoung", "Chloe Young"),
+    ("EllaWright", "Ella Wright"), ("VictoriaHarris", "Victoria Harris"),
+    ("EmmaWhite", "Emma White"), ("LilyHall", "Lily Hall"),
+    ("ZoeParker", "Zoe Parker"), ("AmeliaStewart", "Amelia Stewart"),
+    ("HarperBennett", "Harper Bennett"), ("ScarlettRivera", "Scarlett Rivera"),
+    ("AriaFlores", "Aria Flores"), ("LaylaGomez", "Layla Gomez"),
+    ("CamilaOrtiz", "Camila Ortiz"), ("PenelopeReed", "Penelope Reed"),
+    ("RileyPowell", "Riley Powell"), ("NoraCook", "Nora Cook"),
+    ("LillianRogers", "Lillian Rogers"), ("HannahSimmons", "Hannah Simmons"),
+    ("EvelynFoster", "Evelyn Foster"), ("StellaCole", "Stella Cole"),
+    ("EllieWard", "Ellie Ward"), ("HazelPeterson", "Hazel Peterson"),
+    ("AuroraGray", "Aurora Gray"), ("SavannahEvans", "Savannah Evans"),
+    ("PaisleyCollins", "Paisley Collins"), ("BrooklynDiaz", "Brooklyn Diaz"),
+    ("ClaireHughes", "Claire Hughes"), ("SkylarRoss", "Skylar Ross"),
+    ("LucyLong", "Lucy Long"), ("BellaButler", "Bella Butler"),
+    ("VioletBarnes", "Violet Barnes"), ("NaomiPrice", "Naomi Price"),
+    ("MayaHoward", "Maya Howard"), ("LeahWatson", "Leah Watson"),
+    ("SadieHenderson", "Sadie Henderson"), ("AliceGibson", "Alice Gibson"),
+    ("EvaSanders", "Eva Sanders"), ("EverlyWard", "Everly Ward"),
+    ("MadelynGray", "Madelyn Gray"), ("KinsleyMorgan", "Kinsley Morgan"),
+    ("AllisonRoss", "Allison Ross"), ("AnnaHayes", "Anna Hayes"),
+    ("SarahBrooks", "Sarah Brooks"), ("JuliaParker", "Julia Parker"),
+    ("NatalieScott", "Natalie Scott"), ("CarolineNelson", "Caroline Nelson"),
+    ("FatimaZahra", "Fatima Zahra"), ("AishaHassan", "Aisha Hassan"),
+    ("LaylaAbdullah", "Layla Abdullah"), ("MariamKhalil", "Mariam Khalil"),
+    ("HudaSalem", "Huda Salem"), ("AmiraFarah", "Amira Farah"),
+    ("NgoziOkeke", "Ngozi Okeke"), ("AdaezeNwankwo", "Adaeze Nwankwo"),
+    ("ChiomaUche", "Chioma Uche"), ("FolakeAdeola", "Folake Adeola"),
+    ("FunkeOlawale", "Funke Olawale"), ("TemiBalogun", "Temi Balogun"),
+    ("AkiraTanaka", "Akira Tanaka"), ("YumiKawasaki", "Yumi Kawasaki"),
+    ("AyaSuzuki", "Aya Suzuki"), ("SakuraYamamoto", "Sakura Yamamoto"),
+    ("NaokoFujimoto", "Naoko Fujimoto"), ("JiwooPark", "Jiwoo Park"),
+    ("EunseoKim", "Eunseo Kim"), ("HanaLee", "Hana Lee"),
+    ("MinaChoi", "Mina Choi"), ("SooyeonHan", "Sooyeon Han"),
+    ("PriyaSharma", "Priya Sharma"), ("NehaPatel", "Neha Patel"),
+    ("AnjaliKaur", "Anjali Kaur"), ("SoniaMehta", "Sonia Mehta"),
+    ("RadhikaSingh", "Radhika Singh"), ("KavyaGupta", "Kavya Gupta"),
+    ("LiNa", "Li Na"), ("ChenXiu", "Chen Xiu"),
+    ("WangMei", "Wang Mei"), ("ZhaoLing", "Zhao Ling"),
+    ("ZhangHui", "Zhang Hui"), ("SunYan", "Sun Yan"),
+    ("IrinaVolkova", "Irina Volkova"), ("OlgaSmirnova", "Olga Smirnova"),
+    ("NataliaPetrova", "Natalia Petrova"), ("SvetlanaIvanova", "Svetlana Ivanova"),
+    ("AnastasiaSokolova", "Anastasia Sokolova"), ("ElenaMorozova", "Elena Morozova")
 ]
 
 # Success story templates with dynamic placeholders
@@ -233,26 +381,137 @@ def fetch_recent_profits():
 
 # Helper: Generate profit scenario with realistic gains
 def generate_profit_scenario(symbol):
-    recent_profits = fetch_recent_profits()
+    """
+    - Meme coins: 5–50x normally; 10% chance of 30–100x 'moonshot'
+      Deposits: 500–3000 (natural integers, not rounded).
+    - Stocks/Crypto: 2–8x normally, but if deposit is a WHALE (20k–40k),
+      cap gains tighter at 2–5x for realism.
+      Deposits mix:
+        • 35% small retail: 100–400
+        • 50% regular: 500–1500
+        • 15% whale: 20000–40000
+    - Profits rounded to nearest 50; deposits are NOT rounded.
+    """
+    recent_profits = fetch_recent_profits()  # your existing DB check
 
+    # --- MEME COINS (wild but believable) ---
     if symbol in MEME_COINS:
-        # ✅ Meme coins: 2x – 20x
-        deposit = random.choice([300, 500, 700, 1000, 1500])
-        profit = None
-        while not profit or profit in recent_profits:
-            raw_profit = deposit * random.uniform(2, 20)
-            profit = int(raw_profit // 50 * 50)  # round to nearest 50
+        deposit = random.randint(500, 7000)  # organic amounts like 817, 1045, etc.
+        mult = random.uniform(5, 50)
+        if random.random() < 0.10:  # 10% moonshot
+            mult = random.uniform(30, 100)
+
+        profit = int((deposit * mult) // 50 * 50)
+        # uniqueness guard
+        tries = 0
+        while profit in recent_profits and tries < 10:
+            mult = random.uniform(5, 50)
+            if random.random() < 0.10:
+                mult = random.uniform(30, 100)
+            profit = int((deposit * mult) // 50 * 50)
+            tries += 1
+
+    # --- STOCKS / MAJOR CRYPTO (more conservative) ---
     else:
-        # ✅ Stocks & Crypto: 2x – 6x
-        deposit = random.choice([300, 500, 700, 1000])
-        profit = None
-        while not profit or profit in recent_profits:
-            raw_profit = deposit * random.uniform(2, 6)
-            profit = int(raw_profit // 50 * 50)
+        r = random.random()
+        if r < 0.35:                       # small retail
+            deposit = random.randint(100, 900)
+            mult_low, mult_high = 2.0, 8.0
+        elif r < 0.85:                     # regular
+            deposit = random.randint(500, 8500)
+            mult_low, mult_high = 2.0, 8.0
+        else:                              # whale (cap gains tighter for realism)
+            deposit = random.randint(20000, 40000)
+            mult_low, mult_high = 2.0, 5.0  # <-- tighter range for big capital
+
+        mult = random.uniform(mult_low, mult_high)
+        profit = int((deposit * mult) // 50 * 50)
+
+        # uniqueness guard
+        tries = 0
+        while profit in recent_profits and tries < 10:
+            mult = random.uniform(mult_low, mult_high)
+            profit = int((deposit * mult) // 50 * 50)
+            tries += 1
+
+    # --- Narratives ---
+    percentage_gain = round((profit / deposit - 1) * 100, 1)
+
+    if symbol in STOCK_SYMBOLS:
+        trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
+        reasons = [
+            f"{symbol} {trading_style} climbed on momentum!",
+            f"Solid {trading_style} execution on {symbol}.",
+            f"{symbol} strength confirmed by clean {trading_style}.",
+            f"Market favored {symbol} with strong {trading_style} follow-through.",
+            f"{trading_style} on {symbol} delivered high quality entries.",
+        ]
+    elif symbol in CRYPTO_SYMBOLS:
+        trading_style = random.choice(["HODL", "Swing Trade", "DCA", "Arbitrage", "Leverage Trading"])
+        reasons = [
+            f"{symbol} {trading_style} rode a liquidity wave.",
+            f"{trading_style} on {symbol} aligned with trend expansion.",
+            f"{symbol} breakout + {trading_style} risk control.",
+            f"Clean {trading_style} structure lifted {symbol}.",
+            f"{symbol} trend leg advanced with disciplined {trading_style}.",
+        ]
+    else:
+        trading_style = random.choice(["Early Sniping", "Pump Riding", "Community Flip", "Airdrop Hunt"])
+        reasons = [
+            f"{symbol} squeeze extended with {trading_style}.",
+            f"Community traction sent {symbol} higher.",
+            f"{symbol} trend pop after fresh flows.",
+            f"Smart {trading_style} timing on {symbol}.",
+            f"{symbol} leg-up after catalysts and chatter.",
+        ]
+
+    reason = random.choice(reasons) + f" (+{percentage_gain}%)"
+    return deposit, profit, percentage_gain, reason, trading_style
+
+    # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
+    def weighted_multiplier(is_meme: bool) -> float:
+        if is_meme:
+            # Buckets (low/med/high/super) with probabilities
+            buckets = [
+                ( (2.0, 4.0),  0.45 ),   # most often 2–4×
+                ( (4.0, 8.0),  0.30 ),   # sometimes 4–8×
+                ( (8.0, 12.0), 0.18 ),   # less often 8–12×
+                ( (12.0, 20.0),0.07 ),   # rare 12–20× bombs
+            ]
+        else:
+            buckets = [
+                ( (2.0, 3.0),  0.55 ),   # most often 2–3×
+                ( (3.0, 4.0),  0.25 ),   # sometimes 3–4×
+                ( (4.0, 5.0),  0.15 ),   # less often 4–5×
+                ( (5.0, 6.0),  0.05 ),   # rare 5–6× spikes
+            ]
+        r = random.random()
+        cum = 0.0
+        for (low, high), p in buckets:
+            cum += p
+            if r <= cum:
+                return random.uniform(low, high)
+        low, high = buckets[-1][0]
+        return random.uniform(low, high)
+
+    is_meme = symbol in MEME_COINS
+    deposit = random.choice(meme_deposits if is_meme else spot_deposits)
+
+    # pick a multiplier with the weighted dist above
+    mult = weighted_multiplier(is_meme)
+    raw_profit = deposit * mult
+
+    # make numbers look “human” (rounded but not too perfect)
+    profit = int(raw_profit // 50 * 50)
+    while profit in recent_profits:
+        mult = weighted_multiplier(is_meme)
+        profit = int((deposit * mult) // 50 * 50)
 
     multiplier = profit / deposit
     percentage_gain = round((multiplier - 1) * 100, 1)
-    price_increase = int(percentage_gain * random.uniform(0.8, 1.2))
+
+    # price move shown in the blurb (loosely tied to ROI so it feels plausible)
+    price_increase = int(percentage_gain * random.uniform(0.7, 1.1))
 
     if symbol in STOCK_SYMBOLS:
         trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
@@ -285,6 +544,10 @@ def generate_profit_scenario(symbol):
     return deposit, profit, percentage_gain, random.choice(reasons), trading_style
 
 def fetch_cached_rankings():
+    """
+    Build a rich leaderboard with 15–20 names, descending, unique totals.
+    Cache for 5 hours to keep the story coherent across posts.
+    """
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache)).fetchone()
@@ -292,50 +555,52 @@ def fetch_cached_rankings():
             ts = row.timestamp
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
-
-            # ✅ If cached rankings are < 5 hours old, reuse them
             if (now - ts) < timedelta(hours=5):
                 return row.content.split("\n")
 
-        # ✅ Generate fresh rankings every 5 hours
-        selected_traders = random.sample(RANKING_TRADERS, 10)
+        # How many entries this time (15–20)
+        count = random.randint(15, 20)
 
-        profits_used = set()
-        ranking_data = []
-        for i, (_, name) in enumerate(selected_traders, start=1):
-            if i <= 3:
-                low, high = 10000, 20000   # 🥇 Top 3
-            elif i <= 7:
-                low, high = 5000, 10000    # 🟢 Middle ranks
-            else:
-                low, high = 1000, 5000     # 🔻 Bottom ranks
+        # If you created RANKING_TRADERS with ~200 names, this will sample cleanly:
+        selected = random.sample(RANKING_TRADERS, count)
 
-            # Ensure each profit is unique
-            profit = random.randint(low, high)
-            while profit in profits_used:
-                profit = random.randint(low, high)
-            profits_used.add(profit)
+        # Buckets for believable descending totals
+        # Top 3: 15k–40k, next 5: 8k–15k, rest: 2k–8k
+        ranges = []
+        for i in range(1, count + 1):
+            if i <= 3:                # podium
+                ranges.append((15000, 40000))
+            elif i <= 8:              # upper mid
+                ranges.append((8000, 15000))
+            else:                     # rest
+                ranges.append((2000, 8000))
 
-            ranking_data.append((name, profit))
+        # Create unique totals per slot, then sort desc anyway (for realism)
+        totals = set()
+        ranking_pairs = []
+        for i, (_, name) in enumerate(selected, start=1):
+            low, high = ranges[i-1]
+            val = random.randint(low, high) // 50 * 50
+            while val in totals:
+                val = random.randint(low, high) // 50 * 50
+            totals.add(val)
+            ranking_pairs.append((name, val))
 
         # Sort by profit descending
-        ranking_data.sort(key=lambda x: x[1], reverse=True)
+        ranking_pairs.sort(key=lambda x: x[1], reverse=True)
 
-        # Add medals for top 3
         medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-
         lines = []
-        for i, (name, profit) in enumerate(ranking_data, start=1):
-            medal = medals.get(i, f"{i}.")
-            lines.append(f"{medal} {name} — ${profit:,} profit")
+        for i, (name, total) in enumerate(ranking_pairs, start=1):
+            badge = medals.get(i, f"{i}.")
+            lines.append(f"{badge} <b>{name}</b> — ${total:,} profit")
 
-        # ✅ Save entire ranking snapshot (locked for 5 hours)
+        # Cache snapshot
         conn.execute(delete(rankings_cache))
         conn.execute(insert(rankings_cache).values(
             content="\n".join(lines),
             timestamp=now
         ))
-
         return lines
 
 def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style):
