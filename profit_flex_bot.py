@@ -313,30 +313,47 @@ def fetch_cached_rankings():
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
 
+            # ✅ If cached rankings are < 5 hours old, reuse them
             if (now - ts) < timedelta(hours=5):
                 return row.content.split("\n")
 
-        # Generate fresh rankings (10 random traders)
-        ranking_data = [
-            (name, int(random.uniform(1000, 20000) // 50 * 50))
-            for _, name in random.sample(RANKING_TRADERS, 10)
-        ]
-        df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
+        # ✅ Generate fresh rankings every 5 hours
+        selected_traders = random.sample(RANKING_TRADERS, 10)
 
-        # ✅ Add medals for top 3
+        profits_used = set()
+        ranking_data = []
+        for i, (_, name) in enumerate(selected_traders, start=1):
+            if i <= 3:
+                low, high = 10000, 20000   # 🥇 Top 3
+            elif i <= 7:
+                low, high = 5000, 10000    # 🟢 Middle ranks
+            else:
+                low, high = 1000, 5000     # 🔻 Bottom ranks
+
+            # Ensure each profit is unique
+            profit = random.randint(low, high)
+            while profit in profits_used:
+                profit = random.randint(low, high)
+            profits_used.add(profit)
+
+            ranking_data.append((name, profit))
+
+        # Sort by profit descending
+        ranking_data.sort(key=lambda x: x[1], reverse=True)
+
+        # Add medals for top 3
         medals = {1: "🥇", 2: "🥈", 3: "🥉"}
 
         lines = []
-        for i, r in enumerate(df.itertuples(index=False), start=1):
+        for i, (name, profit) in enumerate(ranking_data, start=1):
             medal = medals.get(i, f"{i}.")
-            line = f"{medal} {r.username} — ${r.total_profit:,} profit"
-            lines.append(line)
+            lines.append(f"{medal} {name} — ${profit:,} profit")
 
-        # Save in cache
+        # ✅ Save entire ranking snapshot (locked for 5 hours)
         conn.execute(delete(rankings_cache))
         conn.execute(insert(rankings_cache).values(
             content="\n".join(lines),
-            timestamp=datetime.now(timezone.utc)
+            timestamp=now
         ))
 
         return lines
