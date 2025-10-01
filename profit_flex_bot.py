@@ -77,6 +77,14 @@ success_stories = Table(
     Column("image", String)
 )
 
+# Rankings cache table
+rankings_cache = Table(
+    "rankings_cache", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("content", String),
+    Column("timestamp", DateTime)
+)
+
 metadata.create_all(engine)
 
 # Bot instance
@@ -282,19 +290,31 @@ def generate_profit_scenario(symbol):
     
     return deposit, target_profit, percentage_gain, random.choice(reasons), trading_style
 
-# Helper: Fetch user stats from DB for ranking
-def fetch_user_stats():
-    try:
-        with engine.connect() as conn:
+# Fetch rankings (cached for 5 hours)
+def fetch_cached_rankings():
+    now = datetime.now(timezone.utc)
+    with engine.begin() as conn:
+        row = conn.execute(select(rankings_cache)).fetchone()
+        if row and (now - row.timestamp) < timedelta(hours=5):
+            return row.content.split("\n")
+
+        # Generate new rankings
+        try:
             df = pd.read_sql("SELECT username, total_profit FROM users ORDER BY total_profit DESC LIMIT 10", conn)
             if df.empty:
-                # Generate random stats for ranking traders if no data
                 ranking_data = [(name, random.uniform(1000, 10000)) for _, name in random.sample(RANKING_TRADERS, 10)]
                 df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
-            return df
-    except Exception as e:
-        logger.error(f"Database error: {e}")
-        return pd.DataFrame()
+        except:
+            ranking_data = [(name, random.uniform(1000, 10000)) for _, name in random.sample(RANKING_TRADERS, 10)]
+            df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
+
+        lines = [f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit" for i, (_, r) in enumerate(df.iterrows(), 1)]
+
+        # Save in cache
+        conn.execute(delete(rankings_cache))  # keep only one cache row
+        conn.execute(insert(rankings_cache).values(content="\n".join(lines), timestamp=now))
+
+        return lines
 
 # Craft a profit message with mentions
 def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style):
@@ -348,24 +368,15 @@ def craft_success_story(current_index, gender):
         [InlineKeyboardButton("Back to Menu", callback_data="back")]
     ]
     return story, InlineKeyboardMarkup(keyboard), image_path if os.path.exists(image_path) else None
-# Craft trade status message with success story
 def craft_trade_status():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    user_df = fetch_user_stats()
-    social_lines = []
-    for i, (_, r) in enumerate(user_df.iterrows(), 1):
-        social_lines.append(f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit")
-    if user_df.empty:
-        social_lines = [f"{i}. {random.choice(RANKING_TRADERS)[1]} — ${random.randint(1000,5000):,.2f} profit" for i in range(1, 11)]
-    
-    social_text = "\n".join(social_lines)
+    social_lines = fetch_cached_rankings()
     return (
         f"🏆 <b>Top Trader Rankings</b> 🏆\n"
         f"As of {ts}:\n"
-        f"{social_text}\n\n"
+        f"{'\n'.join(social_lines)}\n\n"
         f"Join the community at Options Trading University for more trading insights! #TradingCommunity"
     ), InlineKeyboardMarkup([[InlineKeyboardButton("Back", callback_data="back")]])
-
 # Log post content to DB and update user profits
 def log_post(symbol, content, deposit, profit, user_id=None):
     try:
@@ -495,25 +506,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-    elif data.startswith("success_"):
-        parts = data.split("_")
+elif data.startswith("success_"):
+    parts = data.split("_")
 
-        if len(parts) == 3:
-            # Case: success_any_5
-            _, _, index = parts
-            action = "show"
-            gender = "any"
-            index = int(index)
+    # success_any_3
+    if parts[1] == "any":
+        index = int(parts[2])
+        gender = "any"
 
-        elif len(parts) == 4:
-            # Case: success_prev_male_3 or success_next_female_2
-            action, gender, index = parts[1], parts[2], int(parts[3])
-        else:
-            await query.edit_message_text("⚠️ Invalid success story request.")
-            return
+    # success_prev_male_3 or success_next_female_2
+    elif parts[1] in ["prev", "next"]:
+        action, gender, index = parts[1], parts[2], int(parts[3])
+        index = index - 1 if action == "prev" else index + 1
+    else:
+        await query.edit_message_text("⚠️ Invalid success story request.")
+        return
 
-        # Always safe wrap and get story
-        story, reply_markup, image_path = craft_success_story(index, gender)
+    # Always safe wrap and get story
+    story, reply_markup, image_path = craft_success_story(index, gender)
 
         if image_path and os.path.exists(image_path):
             with open(image_path, 'rb') as photo:
