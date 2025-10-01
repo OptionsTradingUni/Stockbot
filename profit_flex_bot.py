@@ -596,8 +596,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    elif data == "back":
-        # 👇 This rebuilds the /start main menu
+        elif data == "back":
+        # 👇 Build the /start main menu again
         total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
         random_index = random.randint(0, total_stories - 1)
 
@@ -610,7 +610,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
         welcome_text = (
-            f"Welcome back!\n\n"
+            f"📌 Back to Main Menu\n\n"
             f"At Options Trading University, we provide expert-led training, real-time market analysis, "
             f"and a thriving community of successful traders.\n\n"
             f"Why join us?\n"
@@ -620,7 +620,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Start your journey to financial growth today!"
         )
 
-        await query.edit_message_text(
+        # ❌ Instead of editing (fails if last was photo)
+        # await query.edit_message_text(...)
+
+        # ✅ Always send a fresh new message
+        await query.message.reply_text(
             text=welcome_text,
             parse_mode=constants.ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(keyboard)
