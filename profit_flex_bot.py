@@ -260,18 +260,40 @@ def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, tradi
     reply_markup = InlineKeyboardMarkup(keyboard)
     return random.choice(templates), reply_markup
 
-# Craft a success story with navigation
 def craft_success_story(current_index, gender):
-    stories = SUCCESS_STORIES[gender]
-    name, _ = SUCCESS_TRADERS[gender][current_index]
-    story = stories[current_index]
-    image_path = os.path.join(IMAGE_DIR, f"{gender}{current_index + 1}.jpeg")  # e.g., man1.jpeg, woman1.jpeg
+    # Merge both genders into one story pool
+    combined_templates = [
+        ("male", t) for t in SUCCESS_STORY_TEMPLATES["male"]
+    ] + [
+        ("female", t) for t in SUCCESS_STORY_TEMPLATES["female"]
+    ]
+
+    # Wrap the index globally (loop forever)
+    total = len(combined_templates)
+    current_index = current_index % total
+    gender, template = combined_templates[current_index]
+
+    # Pick a random trader from this gender
+    trader_username, trader_name = random.choice(SUCCESS_TRADERS[gender])
+
+    # Dynamic profit for realism
+    profit = random.randint(2000, 10000)
+
+    # Build story
+    story = f"{trader_name} {template.replace('${profit}', str(profit))}"
+
+    # Pick image for this gender (cycle through male1..male5 / female1..female5)
+    image_number = (current_index % 5) + 1
+    image_path = os.path.join(IMAGE_DIR, f"{gender}{image_number}.jpeg")
+
+    # Navigation buttons
     keyboard = [
-        [InlineKeyboardButton("Back", callback_data=f"success_prev_{gender}_{current_index}")],
-        [InlineKeyboardButton("Next", callback_data=f"success_next_{gender}_{current_index}")],
+        [InlineKeyboardButton("⬅️ Prev", callback_data=f"success_prev_{gender}_{current_index}")],
+        [InlineKeyboardButton("➡️ Next", callback_data=f"success_next_{gender}_{current_index}")],
         [InlineKeyboardButton("Back to Menu", callback_data="back")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     return story, reply_markup, image_path if os.path.exists(image_path) else None
 
 # Craft trade status message with success story
@@ -365,9 +387,11 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
+    total_stories = len(SUCCESS_STORY_TEMPLATES["male"]) + len(SUCCESS_STORY_TEMPLATES["female"])
+random_index = random.randint(0, total_stories - 1)
     keyboard = [
     [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-     InlineKeyboardButton("Success Stories", callback_data=f"success_{random.choice(['male','female'])}_{random.randint(0,4)}")],
+     InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")
     [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
      InlineKeyboardButton("Terms of Service", callback_data="terms")],
     [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
@@ -416,19 +440,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data.startswith("success_"):
-        parts = data.split("_")
+    parts = data.split("_")
 
-        # Case 1: "success_male_0"
-        if len(parts) == 3:
-            gender, index = parts[1], int(parts[2])
-            action = "show"
+    if len(parts) == 3:
+        # Case: success_any_5
+        _, _, index = parts
+        action = "show"
+        gender = "any"   # placeholder, craft_success_story ignores it
+        index = int(index)
 
-        # Case 2: "success_prev_male_0" or "success_next_male_0"
-        elif len(parts) == 4:
-            action, gender, index = parts[1], parts[2], int(parts[3])
-        else:
-            await query.edit_message_text("⚠️ Invalid success story request.")
-            return
+    elif len(parts) == 4:
+        # Case: success_prev_male_3 or success_next_female_2
+        action, gender, index = parts[1], parts[2], int(parts[3])
+    else:
+        await query.edit_message_text("⚠️ Invalid success story request.")
+        return
 
         stories = SUCCESS_STORIES[gender]
         current_index = index
@@ -493,9 +519,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "back":
+        total_stories = len(SUCCESS_STORY_TEMPLATES["male"]) + len(SUCCESS_STORY_TEMPLATES["female"])
+random_index = random.randint(0, total_stories - 1)
         keyboard = [
             [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-             InlineKeyboardButton("Success Stories", callback_data=f"success_{random.choice(['male','female'])}_{random.randint(0,4)}")],
+             InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")
             [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
              InlineKeyboardButton("Terms of Service", callback_data="terms")],
             [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
