@@ -110,12 +110,14 @@ IMAGE_DIR = os.getenv("IMAGE_DIR", "images/")
 engine = create_engine(DATABASE_URL, future=True)
 metadata = MetaData()
 
+# Rankings cache table
 rankings_cache = Table(
     "rankings_cache", metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("content", String),
     Column("timestamp", DateTime),
-    Column("scope", String)  # "daily", "weekly", "monthly"
+    Column("scope", String),  # "daily", "weekly", "monthly"
+    extend_existing=True
 )
 
 posts = Table(
@@ -145,14 +147,6 @@ success_stories = Table(
     Column("gender", String),
     Column("story", String),
     Column("image", String)
-)
-
-# Rankings cache table
-rankings_cache = Table(
-    "rankings_cache", metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("content", String),
-    Column("timestamp", DateTime)
 )
 
 metadata.create_all(engine)
