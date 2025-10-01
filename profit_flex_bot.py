@@ -11,9 +11,8 @@ import os
 import random
 import asyncio
 import logging
-from sqlalchemy import select, insert, delete
-from datetime import timedelta
-from datetime import datetime, timezone
+from sqlalchemy import select, delete, insert
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import pandas as pd
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime
@@ -142,24 +141,30 @@ def initialize_stories():
                 })
             return stories
 
-        logger.info("Generating new unique success stories...")
+        logger.info("Generating new success stories...")
         stories = {"male": [], "female": []}
 
-        # Pre-generate unique deposits and profits
-        deposits = random.sample(range(300, 2000, 50), 10)  # 10 unique deposits
-        profits = []
-        for dep in deposits:
-            profit = int(dep * random.uniform(2, 8))
-            # Make sure profit is unique
-            while profit in profits:
-                profit = int(dep * random.uniform(2, 8))
-            profits.append(profit)
+        # 10 unique deposits (1 for each trader)
+        deposits = [300, 400, 500, 600, 700, 800, 1000, 1200, 1500, 2000]
+        random.shuffle(deposits)  # assign randomly across traders
 
-        idx = 0
+        profits_used = set()
+
         for gender, traders in SUCCESS_TRADERS.items():
             for _, name, image_file in traders:
-                deposit, profit = deposits[idx], profits[idx]
-                idx += 1
+                deposit = deposits.pop()
+
+                # Generate a profit 2x–8x of deposit, rounded realistically
+                profit = None
+                while not profit or profit in profits_used:
+                    raw_profit = deposit * random.uniform(2, 8)
+
+                    # make it look natural (not always exact round)
+                    # e.g., 2487 → 2500, 5321 → 5300
+                    round_base = random.choice([50, 100])  
+                    profit = int(round(raw_profit / round_base) * round_base)
+
+                profits_used.add(profit)
 
                 deposit_str = f"${deposit:,}"
                 profit_str = f"${profit:,}"
@@ -306,17 +311,23 @@ def fetch_cached_rankings():
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache)).fetchone()
-        if row and row.timestamp and (now - row.timestamp) < timedelta(hours=5):
+        if row and (now - row.timestamp) < timedelta(hours=5):
             return row.content.split("\n")
 
-        # Always use your fixed names (RANKING_TRADERS)
-        ranking_data = [(name, round(random.uniform(2000, 15000), 2)) for _, name in random.sample(RANKING_TRADERS, 10)]
+        # Generate fresh rankings
+        ranking_data = [(name, round(random.uniform(1000, 20000), 2))
+                        for _, name in random.sample(RANKING_TRADERS, 10)]
+        df = pd.DataFrame(ranking_data, columns=["username", "total_profit"])
 
-        lines = [f"{i}. {username} — ${profit:,.2f} profit" for i, (username, profit) in enumerate(ranking_data, 1)]
+        lines = [f"{i}. {r['username']} — ${r['total_profit']:,.2f} profit"
+                 for i, r in df.iterrows()]
 
-        # Save to cache for 5 hours
+        # Save in cache
         conn.execute(delete(rankings_cache))
-        conn.execute(insert(rankings_cache).values(content="\n".join(lines), timestamp=now))
+        conn.execute(insert(rankings_cache).values(
+            content="\n".join(lines),
+            timestamp=now
+        ))
 
         return lines
 
