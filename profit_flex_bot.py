@@ -109,21 +109,21 @@ RANKING_TRADERS = [
     ("NathanielReed", "Nathaniel Reed"), ("ZoeParker", "Zoe Parker")
 ]
 
-# Success story templates (without binding names yet)
+# Success story templates with dynamic placeholders
 SUCCESS_STORY_TEMPLATES = {
     "male": [
-        "transformed a modest $1,000 investment into an impressive ${profit} through a meticulously planned swing trade on AAPL. He credits OTU's expert mentorship for honing his disciplined approach and market timing skills over months of practice.",
-        "turned $500 into a remarkable ${profit} by mastering the art of BTC HODL. His success stemmed from OTU's detailed market analysis, which accurately forecasted a surge, guiding his patient strategy.",
-        "flipped an $800 stake into ${profit} with a bold NIKY pump riding move. He attributes his victory to OTU's vibrant community support, which provided real-time insights and encouragement.",
-        "achieved a stunning ${profit} profit from a strategic ETH DCA plan. He praises OTU's step-by-step strategies for revolutionizing his trading career and building his confidence step by step.",
-        "earned ${profit} through a clever SOL arbitrage play. He highlights OTU's real-time insights as the key to navigating volatile markets with precision and profit."
+        "transformed a modest ${deposit} investment into an impressive ${profit} through a meticulously planned swing trade on AAPL.",
+        "turned ${deposit} into a remarkable ${profit} by mastering the art of BTC HODL.",
+        "flipped a ${deposit} stake into ${profit} with a bold NIKY pump riding move.",
+        "achieved a stunning ${profit} profit from a strategic ETH DCA plan starting with ${deposit}.",
+        "earned ${profit} through a clever SOL arbitrage play after investing ${deposit}."
     ],
     "female": [
-        "grew a $600 investment into ${profit} with a disciplined TSLA scalping strategy. She attributes her success to OTU's proven techniques and the mentorship that sharpened her quick-decision skills.",
-        "boosted $700 into ${profit} with an early sniping move on DOGE. She thanks OTU's timely alerts and community tips for helping her spot the perfect entry point in a fast-moving market.",
-        "turned $1,500 into ${profit} via a SHIB community flip. She credits OTU's collaborative environment for her breakthrough, fostering a network that amplified her gains.",
-        "made ${profit} from a NVDA position trade. She says, 'OTU's comprehensive resources gave me the confidence to hold long-term and aim for significant returns.'",
-        "grew $900 into ${profit} with a GOOGL day trading plan. She calls OTU 'the ultimate trading academy,' crediting its expert guidance for her consistent wins."
+        "grew a ${deposit} investment into ${profit} with a disciplined TSLA scalping strategy.",
+        "boosted ${deposit} into ${profit} with an early sniping move on DOGE.",
+        "turned ${deposit} into ${profit} via a SHIB community flip.",
+        "made ${profit} from a NVDA position trade starting with ${deposit}.",
+        "grew ${deposit} into ${profit} with a GOOGL day trading plan."
     ]
 }
 
@@ -276,11 +276,13 @@ def craft_success_story(current_index, gender):
     # Pick a random trader from this gender
     trader_username, trader_name = random.choice(SUCCESS_TRADERS[gender])
 
-    # Dynamic profit for realism
-    profit = random.randint(2000, 10000)
+    # Dynamic deposit + profit
+    deposit = random.choice([300, 500, 700, 900, 1200, 1500, 2000])
+    profit = deposit * random.uniform(2, 8)  # 2x–8x multiplier
+    profit = int(profit)
 
-    # Build story
-    story = f"{trader_name} {template.replace('${profit}', str(profit))}"
+    # Build story text
+    story = f"{trader_name} {template.replace('${deposit}', str(deposit)).replace('${profit}', str(profit))}"
 
     # Pick image for this gender (cycle through male1..male5 / female1..female5)
     image_number = (current_index % 5) + 1
@@ -295,7 +297,6 @@ def craft_success_story(current_index, gender):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     return story, reply_markup, image_path if os.path.exists(image_path) else None
-
 # Craft trade status message with success story
 def craft_trade_status():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
