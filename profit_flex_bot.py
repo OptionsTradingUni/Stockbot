@@ -39,13 +39,12 @@ STOCK_SYMBOLS = [s.strip() for s in os.getenv("STOCK_SYMBOLS", "TSLA,AAPL,NVDA,M
 CRYPTO_SYMBOLS = [s.strip() for s in os.getenv("CRYPTO_SYMBOLS", "BTC,ETH,SOL").split(",")]
 MEME_COINS = [s.strip() for s in os.getenv("MEME_COINS", "NIKY").split(",")]
 ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
-SWING_TRADE_INTERVAL_MINUTES = int(os.getenv("SWING_TRADE_INTERVAL_MINUTES", "20"))
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///profit_flex.db")
 WEBSITE_URL = os.getenv("WEBSITE_URL", "https://optionstradinguni.online/")
 RATE_LIMIT_SECONDS = float(os.getenv("RATE_LIMIT_SECONDS", "5"))
-IMAGE_DIR = os.getenv("IMAGE_DIR", "images/")  # Directory for images (e.g., images/man1.jpeg)
+IMAGE_DIR = os.getenv("IMAGE_DIR", "images/")
 
-# Initialize DB engine and auto-create tables
+# Init DB
 engine = create_engine(DATABASE_URL, future=True)
 metadata = MetaData()
 
@@ -69,12 +68,21 @@ users = Table(
     Column("total_profit", Float, default=0)
 )
 
+success_stories = Table(
+    "success_stories", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("trader_name", String, unique=True),
+    Column("gender", String),
+    Column("story", String),
+    Column("image", String)
+)
+
 metadata.create_all(engine)
 
-# Telegram Bot instance
+# Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
 
-# Selected Traders for Success Stories (fixed names + images)
+# Traders (fixed names + images)
 SUCCESS_TRADERS = {
     "male": [
         ("JohnDoeTrader", "John Doe", "male1.jpeg"),
@@ -92,27 +100,69 @@ SUCCESS_TRADERS = {
     ]
 }
 
-# Pre-generate fixed deposits and profits per trader
-TRADER_STORIES = {}
-for gender, traders in SUCCESS_TRADERS.items():
-    TRADER_STORIES[gender] = []
-    for _, name, image_file in traders:
-        deposit = random.choice([300, 500, 700, 900, 1200, 1500, 2000])
-        profit = deposit * random.uniform(2, 8)  # 2x–8x multiplier
-        profit = int(profit)
+# Story templates
+SUCCESS_STORY_TEMPLATES = {
+    "male": [
+        "transformed a modest ${deposit} investment into an impressive ${profit} through a meticulously planned swing trade on AAPL.",
+        "turned ${deposit} into a remarkable ${profit} by mastering the art of BTC HODL.",
+        "flipped a ${deposit} stake into ${profit} with a bold NIKY pump riding move.",
+        "achieved a stunning ${profit} profit from a strategic ETH DCA plan starting with ${deposit}.",
+        "earned ${profit} through a clever SOL arbitrage play after investing ${deposit}."
+    ],
+    "female": [
+        "grew a ${deposit} investment into ${profit} with a disciplined TSLA scalping strategy.",
+        "boosted ${deposit} into ${profit} with an early sniping move on DOGE.",
+        "turned ${deposit} into ${profit} via a SHIB community flip.",
+        "made ${profit} from a NVDA position trade starting with ${deposit}.",
+        "grew ${deposit} into ${profit} with a GOOGL day trading plan."
+    ]
+}
 
-        deposit_str = f"${deposit:,.0f}"
-        profit_str = f"${profit:,.0f}"
+# Initialize or load stories
+def initialize_stories():
+    with engine.begin() as conn:
+        existing = conn.execute(success_stories.select()).fetchall()
+        if existing:
+            logger.info("Loaded success stories from DB.")
+            stories = {"male": [], "female": []}
+            for row in existing:
+                stories[row.gender].append({
+                    "name": row.trader_name,
+                    "story": row.story,
+                    "image": row.image
+                })
+            return stories
 
-        # Pick a template from that gender
-        template = random.choice(SUCCESS_STORY_TEMPLATES[gender])
-        story_text = f"{name} {template.replace('${deposit}', deposit_str).replace('${profit}', profit_str)}"
+        logger.info("Generating new success stories...")
+        stories = {"male": [], "female": []}
 
-        TRADER_STORIES[gender].append({
-            "name": name,
-            "story": story_text,
-            "image": os.path.join(IMAGE_DIR, image_file)
-        })
+        for gender, traders in SUCCESS_TRADERS.items():
+            for _, name, image_file in traders:
+                deposit = random.choice([300, 500, 700, 900, 1200, 1500, 2000])
+                profit = int(deposit * random.uniform(2, 8))
+
+                deposit_str = f"${deposit:,}"
+                profit_str = f"${profit:,}"
+
+                template = random.choice(SUCCESS_STORY_TEMPLATES[gender])
+                story_text = f"{name} {template.replace('${deposit}', deposit_str).replace('${profit}', profit_str)}"
+
+                conn.execute(success_stories.insert().values(
+                    trader_name=name,
+                    gender=gender,
+                    story=story_text,
+                    image=os.path.join(IMAGE_DIR, image_file)
+                ))
+
+                stories[gender].append({
+                    "name": name,
+                    "story": story_text,
+                    "image": os.path.join(IMAGE_DIR, image_file)
+                })
+
+        return stories
+
+TRADER_STORIES = initialize_stories()
 
 # Expanded Trader Names for Rankings
 RANKING_TRADERS = [
@@ -149,7 +199,7 @@ SUCCESS_STORY_TEMPLATES = {
     ]
 }
 
-# Helper: Fetch recent profits from DB
+# Helper to fetch DB posts
 def fetch_recent_profits():
     try:
         with engine.connect() as conn:
@@ -282,31 +332,22 @@ def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, tradi
     reply_markup = InlineKeyboardMarkup(keyboard)
     return random.choice(templates), reply_markup
 
+# Craft success story
 def craft_success_story(current_index, gender):
-    # Merge both genders for navigation
-    combined_stories = [
-        ("male", s) for s in TRADER_STORIES["male"]
-    ] + [
-        ("female", s) for s in TRADER_STORIES["female"]
-    ]
-
-    # Loop around safely
-    total = len(combined_stories)
+    combined = [("male", s) for s in TRADER_STORIES["male"]] + [("female", s) for s in TRADER_STORIES["female"]]
+    total = len(combined)
     current_index = current_index % total
-    gender, story_data = combined_stories[current_index]
+    gender, story_data = combined[current_index]
 
     story = story_data["story"]
     image_path = story_data["image"]
 
-    # Navigation buttons
     keyboard = [
         [InlineKeyboardButton("⬅️ Prev", callback_data=f"success_prev_{gender}_{current_index}")],
         [InlineKeyboardButton("➡️ Next", callback_data=f"success_next_{gender}_{current_index}")],
         [InlineKeyboardButton("Back to Menu", callback_data="back")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    return story, reply_markup, image_path if os.path.exists(image_path) else None
+    return story, InlineKeyboardMarkup(keyboard), image_path if os.path.exists(image_path) else None
 # Craft trade status message with success story
 def craft_trade_status():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
