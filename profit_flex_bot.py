@@ -513,6 +513,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error adding user {user.id}: {e}")# Callback handler for inline buttons
 # Callback handler for inline buttons
+# Callback handler for inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -547,14 +548,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if image_url and image_url.startswith("http"):
             from telegram import InputMediaPhoto
-            await query.edit_message_media(
-                media=InputMediaPhoto(
-                    media=image_url,
+            try:
+                await query.edit_message_media(
+                    media=InputMediaPhoto(
+                        media=image_url,
+                        caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
+                        parse_mode=constants.ParseMode.HTML
+                    ),
+                    reply_markup=reply_markup
+                )
+            except Exception:
+                # If edit fails (e.g. original was text), send new message
+                await query.message.reply_photo(
+                    photo=image_url,
                     caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
-                    parse_mode=constants.ParseMode.HTML
-                ),
-                reply_markup=reply_markup
-            )
+                    parse_mode=constants.ParseMode.HTML,
+                    reply_markup=reply_markup
+                )
         else:
             await query.edit_message_text(
                 text=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
@@ -596,7 +606,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-        elif data == "back":
+    elif data == "back":
         # 👇 Build the /start main menu again
         total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
         random_index = random.randint(0, total_stories - 1)
@@ -620,10 +630,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Start your journey to financial growth today!"
         )
 
-        # ❌ Instead of editing (fails if last was photo)
-        # await query.edit_message_text(...)
-
-        # ✅ Always send a fresh new message
+        # Always send fresh new message so it works after photos/captions
         await query.message.reply_text(
             text=welcome_text,
             parse_mode=constants.ParseMode.HTML,
