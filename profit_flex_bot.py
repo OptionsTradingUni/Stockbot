@@ -512,6 +512,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         logger.error(f"Error adding user {user.id}: {e}")# Callback handler for inline buttons
+# Callback handler for inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -545,13 +546,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         story, reply_markup, image_url = craft_success_story(index, gender)
 
         if image_url and image_url.startswith("http"):
-            await query.message.reply_photo(
-                photo=image_url,
-                caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
-                parse_mode=constants.ParseMode.HTML,
+            from telegram import InputMediaPhoto
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=image_url,
+                    caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
+                    parse_mode=constants.ParseMode.HTML
+                ),
                 reply_markup=reply_markup
             )
-            await query.message.delete()
         else:
             await query.edit_message_text(
                 text=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
@@ -594,7 +597,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "back":
-        # 👇 Build the main menu again
+        # 👇 This rebuilds the /start main menu
         total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
         random_index = random.randint(0, total_stories - 1)
 
@@ -605,8 +608,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("Terms of Service", callback_data="terms")],
             [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
         ]
+
+        welcome_text = (
+            f"Welcome back!\n\n"
+            f"At Options Trading University, we provide expert-led training, real-time market analysis, "
+            f"and a thriving community of successful traders.\n\n"
+            f"Why join us?\n"
+            f"- Access to high-probability trades (up to 900% gains on meme coins).\n"
+            f"- Guidance from top traders with a track record of success.\n"
+            f"- Exclusive insights on stocks, crypto, and meme coins.\n\n"
+            f"Start your journey to financial growth today!"
+        )
+
         await query.edit_message_text(
-            text="📌 Back to Main Menu",
+            text=welcome_text,
+            parse_mode=constants.ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 # /status handler
