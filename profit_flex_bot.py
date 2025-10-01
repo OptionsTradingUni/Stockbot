@@ -74,23 +74,45 @@ metadata.create_all(engine)
 # Telegram Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
 
-# Selected Traders for Success Stories (5 Male, 5 Female)
+# Selected Traders for Success Stories (fixed names + images)
 SUCCESS_TRADERS = {
     "male": [
-        ("JohnDoeTrader", "John Doe"),
-        ("AlexJohnson", "Alex Johnson"),
-        ("MichaelBrown", "Michael Brown"),
-        ("DavidMiller", "David Miller"),
-        ("ChrisAnderson", "Chris Anderson")
+        ("JohnDoeTrader", "John Doe", "male1.jpeg"),
+        ("AlexJohnson", "Alex Johnson", "male2.jpeg"),
+        ("MichaelBrown", "Michael Brown", "male3.jpeg"),
+        ("DavidMiller", "David Miller", "male4.jpeg"),
+        ("ChrisAnderson", "Chris Anderson", "male5.jpeg")
     ],
     "female": [
-        ("JaneSmithPro", "Jane Smith"),
-        ("EmilyDavis", "Emily Davis"),
-        ("SarahWilson", "Sarah Wilson"),
-        ("LauraTaylor", "Laura Taylor"),
-        ("AnnaMartinez", "Anna Martinez")
+        ("JaneSmithPro", "Jane Smith", "female1.jpeg"),
+        ("EmilyDavis", "Emily Davis", "female2.jpeg"),
+        ("SarahWilson", "Sarah Wilson", "female3.jpeg"),
+        ("LauraTaylor", "Laura Taylor", "female4.jpeg"),
+        ("AnnaMartinez", "Anna Martinez", "female5.jpeg")
     ]
 }
+
+# Pre-generate fixed deposits and profits per trader
+TRADER_STORIES = {}
+for gender, traders in SUCCESS_TRADERS.items():
+    TRADER_STORIES[gender] = []
+    for _, name, image_file in traders:
+        deposit = random.choice([300, 500, 700, 900, 1200, 1500, 2000])
+        profit = deposit * random.uniform(2, 8)  # 2x–8x multiplier
+        profit = int(profit)
+
+        deposit_str = f"${deposit:,.0f}"
+        profit_str = f"${profit:,.0f}"
+
+        # Pick a template from that gender
+        template = random.choice(SUCCESS_STORY_TEMPLATES[gender])
+        story_text = f"{name} {template.replace('${deposit}', deposit_str).replace('${profit}', profit_str)}"
+
+        TRADER_STORIES[gender].append({
+            "name": name,
+            "story": story_text,
+            "image": os.path.join(IMAGE_DIR, image_file)
+        })
 
 # Expanded Trader Names for Rankings
 RANKING_TRADERS = [
@@ -261,32 +283,20 @@ def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, tradi
     return random.choice(templates), reply_markup
 
 def craft_success_story(current_index, gender):
-    # Merge both genders into one story pool
-    combined_templates = [
-        ("male", t) for t in SUCCESS_STORY_TEMPLATES["male"]
+    # Merge both genders for navigation
+    combined_stories = [
+        ("male", s) for s in TRADER_STORIES["male"]
     ] + [
-        ("female", t) for t in SUCCESS_STORY_TEMPLATES["female"]
+        ("female", s) for s in TRADER_STORIES["female"]
     ]
 
-    # Wrap the index globally (loop forever)
-    total = len(combined_templates)
+    # Loop around safely
+    total = len(combined_stories)
     current_index = current_index % total
-    gender, template = combined_templates[current_index]
+    gender, story_data = combined_stories[current_index]
 
-    # Pick a random trader from this gender
-    trader_username, trader_name = random.choice(SUCCESS_TRADERS[gender])
-
-    # Dynamic deposit + profit
-    deposit = random.choice([300, 500, 700, 900, 1200, 1500, 2000])
-    profit = deposit * random.uniform(2, 8)  # 2x–8x multiplier
-    profit = int(profit)
-
-    # Build story text
-    story = f"{trader_name} {template.replace('${deposit}', str(deposit)).replace('${profit}', str(profit))}"
-
-    # Pick image for this gender (cycle through male1..male5 / female1..female5)
-    image_number = (current_index % 5) + 1
-    image_path = os.path.join(IMAGE_DIR, f"{gender}{image_number}.jpeg")
+    story = story_data["story"]
+    image_path = story_data["image"]
 
     # Navigation buttons
     keyboard = [
