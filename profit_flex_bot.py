@@ -506,24 +506,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-elif data.startswith("success_"):
-    parts = data.split("_")
+    elif data.startswith("success_"):
+        parts = data.split("_")
 
-    # success_any_3
-    if parts[1] == "any":
-        index = int(parts[2])
-        gender = "any"
+        # success_any_3
+        if parts[1] == "any":
+            index = int(parts[2])
+            gender = "any"
 
-    # success_prev_male_3 or success_next_female_2
-    elif parts[1] in ["prev", "next"]:
-        action, gender, index = parts[1], parts[2], int(parts[3])
-        index = index - 1 if action == "prev" else index + 1
-    else:
-        await query.edit_message_text("⚠️ Invalid success story request.")
-        return
+        # success_prev_male_3 or success_next_female_2
+        elif parts[1] in ["prev", "next"]:
+            action, gender, index = parts[1], parts[2], int(parts[3])
+            index = index - 1 if action == "prev" else index + 1
+        else:
+            await query.edit_message_text("⚠️ Invalid success story request.")
+            return
 
-    # Always safe wrap and get story
-    story, reply_markup, image_path = craft_success_story(index, gender)
+        # Always safe wrap and get story
+        story, reply_markup, image_path = craft_success_story(index, gender)
 
         if image_path and os.path.exists(image_path):
             with open(image_path, 'rb') as photo:
@@ -574,6 +574,40 @@ elif data.startswith("success_"):
         await query.edit_message_text(
             text=privacy_text,
             parse_mode=constants.ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+
+    elif data == "back":
+        total_stories = len(SUCCESS_STORY_TEMPLATES["male"]) + len(SUCCESS_STORY_TEMPLATES["female"])
+        random_index = random.randint(0, total_stories - 1)
+
+        keyboard = [
+            [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+             InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
+            [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
+             InlineKeyboardButton("Terms of Service", callback_data="terms")],
+            [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            text="Back to main menu.",
+            reply_markup=reply_markup
+        )
+
+    elif data == "back":
+        total_stories = len(SUCCESS_STORY_TEMPLATES["male"]) + len(SUCCESS_STORY_TEMPLATES["female"])
+        random_index = random.randint(0, total_stories - 1)
+
+        keyboard = [
+            [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+             InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
+            [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
+             InlineKeyboardButton("Terms of Service", callback_data="terms")],
+            [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            text="Back to main menu.",
             reply_markup=reply_markup
         )
 
