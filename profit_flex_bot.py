@@ -539,13 +539,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Always safe wrap and get story
         story, reply_markup, image_path = craft_success_story(index, gender)
 
-        if image_path.startswith("http"):
-    await query.message.reply_photo(
-        photo=image_path,
-        caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
-        parse_mode=constants.ParseMode.HTML,
-        reply_markup=reply_markup
-    )
+            elif data.startswith("success_"):
+        parts = data.split("_")
+
+        # success_any_3
+        if parts[1] == "any":
+            index = int(parts[2])
+            gender = "any"
+
+        # success_prev_male_3 or success_next_female_2
+        elif parts[1] in ["prev", "next"]:
+            action, gender, index = parts[1], parts[2], int(parts[3])
+            index = index - 1 if action == "prev" else index + 1
+        else:
+            await query.edit_message_text("⚠️ Invalid success story request.")
+            return
+
+        # Always safe wrap and get story
+        story, reply_markup, image_path = craft_success_story(index, gender)
+
+        if image_path and image_path.startswith("http"):
+            await query.message.reply_photo(
+                photo=image_path,
+                caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+            await query.message.delete()
+        else:
+            await query.edit_message_text(
+                text=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=reply_markup
+            )
     await query.message.delete()
 else:
     await query.edit_message_text(
