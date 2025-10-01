@@ -439,32 +439,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-    elif data.startswith("success_"):
-    parts = data.split("_")
+        elif data.startswith("success_"):
+        parts = data.split("_")
 
-    if len(parts) == 3:
-        # Case: success_any_5
-        _, _, index = parts
-        action = "show"
-        gender = "any"   # placeholder, craft_success_story ignores it
-        index = int(index)
+        if len(parts) == 3:
+            # Case: success_any_5
+            _, _, index = parts
+            action = "show"
+            gender = "any"   # placeholder, ignored in craft_success_story
+            index = int(index)
 
-    elif len(parts) == 4:
-        # Case: success_prev_male_3 or success_next_female_2
-        action, gender, index = parts[1], parts[2], int(parts[3])
-    else:
-        await query.edit_message_text("⚠️ Invalid success story request.")
-        return
+        elif len(parts) == 4:
+            # Case: success_prev_male_3 or success_next_female_2
+            action, gender, index = parts[1], parts[2], int(parts[3])
+        else:
+            await query.edit_message_text("⚠️ Invalid success story request.")
+            return
 
-        stories = SUCCESS_STORIES[gender]
-        current_index = index
-
-        if action == "prev":
-            current_index = (current_index - 1) % len(stories)
-        elif action == "next":
-            current_index = (current_index + 1) % len(stories)
-
-        story, reply_markup, image_path = craft_success_story(current_index, gender)
+        # Always safe wrap and get story
+        story, reply_markup, image_path = craft_success_story(index, gender)
 
         if image_path and os.path.exists(image_path):
             with open(image_path, 'rb') as photo:
