@@ -92,21 +92,20 @@ metadata.create_all(engine)
 # Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
 
-# Traders (fixed names + images)
 SUCCESS_TRADERS = {
     "male": [
-        ("JohnDoeTrader", "John Doe", "male1.jpeg"),
-        ("AlexJohnson", "Alex Johnson", "male2.jpeg"),
-        ("MichaelBrown", "Michael Brown", "male3.jpeg"),
-        ("DavidMiller", "David Miller", "male4.jpeg"),
-        ("ChrisAnderson", "Chris Anderson", "male5.jpeg")
+        ("JohnDoeTrader", "John Doe", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male1.jpeg"),
+        ("AlexJohnson", "Alex Johnson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male2.jpeg"),
+        ("MichaelBrown", "Michael Brown", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male3.jpeg"),
+        ("DavidMiller", "David Miller", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male4.jpeg"),
+        ("ChrisAnderson", "Chris Anderson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male5.jpeg")
     ],
     "female": [
-        ("JaneSmithPro", "Jane Smith", "female1.jpeg"),
-        ("EmilyDavis", "Emily Davis", "female2.jpeg"),
-        ("SarahWilson", "Sarah Wilson", "female3.jpeg"),
-        ("LauraTaylor", "Laura Taylor", "female4.jpeg"),
-        ("AnnaMartinez", "Anna Martinez", "female5.jpeg")
+        ("JaneSmithPro", "Jane Smith", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female1.jpeg"),
+        ("EmilyDavis", "Emily Davis", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female2.jpeg"),
+        ("SarahWilson", "Sarah Wilson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female3.jpeg"),
+        ("LauraTaylor", "Laura Taylor", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female4.jpeg"),
+        ("AnnaMartinez", "Anna Martinez", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female5.jpeg")
     ]
 }
 
@@ -138,30 +137,26 @@ def initialize_stories():
                 stories[row.gender].append({
                     "name": row.trader_name,
                     "story": row.story,
-                    "image": row.image
+                    "image": row.image  # already a URL now
                 })
             return stories
 
         logger.info("Generating new success stories...")
         stories = {"male": [], "female": []}
 
-        # 10 unique deposits (1 for each trader)
         deposits = [300, 400, 500, 600, 700, 800, 1000, 1200, 1500, 2000]
-        random.shuffle(deposits)  # assign randomly across traders
+        random.shuffle(deposits)  
 
         profits_used = set()
 
         for gender, traders in SUCCESS_TRADERS.items():
-            for _, name, image_file in traders:
+            for _, name, image_url in traders:  # now we use URL directly
                 deposit = deposits.pop()
 
-                # Generate a profit 2x–8x of deposit, rounded realistically
+                # Generate realistic profits
                 profit = None
                 while not profit or profit in profits_used:
                     raw_profit = deposit * random.uniform(2, 8)
-
-                    # make it look natural (not always exact round)
-                    # e.g., 2487 → 2500, 5321 → 5300
                     round_base = random.choice([50, 100])  
                     profit = int(round(raw_profit / round_base) * round_base)
 
@@ -177,13 +172,13 @@ def initialize_stories():
                     trader_name=name,
                     gender=gender,
                     story=story_text,
-                    image=os.path.join(IMAGE_DIR, image_file)
+                    image=image_url  # save URL instead of local path
                 ))
 
                 stories[gender].append({
                     "name": name,
                     "story": story_text,
-                    "image": os.path.join(IMAGE_DIR, image_file)
+                    "image": image_url
                 })
 
         return stories
@@ -370,7 +365,6 @@ def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, tradi
     reply_markup = InlineKeyboardMarkup(keyboard)
     return msg, reply_markup
 
-# Craft success story
 def craft_success_story(current_index, gender):
     combined = [("male", s) for s in TRADER_STORIES["male"]] + [("female", s) for s in TRADER_STORIES["female"]]
     total = len(combined)
@@ -378,14 +372,15 @@ def craft_success_story(current_index, gender):
     gender, story_data = combined[current_index]
 
     story = story_data["story"]
-    image_path = story_data["image"]
+    image_url = story_data["image"]  # already a GitHub URL
 
     keyboard = [
         [InlineKeyboardButton("⬅️ Prev", callback_data=f"success_prev_{gender}_{current_index}")],
         [InlineKeyboardButton("➡️ Next", callback_data=f"success_next_{gender}_{current_index}")],
         [InlineKeyboardButton("Back to Menu", callback_data="back")]
     ]
-    return story, InlineKeyboardMarkup(keyboard), image_path if os.path.exists(image_path) else None
+
+    return story, InlineKeyboardMarkup(keyboard), image_url
 def craft_trade_status():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     social_lines = fetch_cached_rankings()
@@ -543,21 +538,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Always safe wrap and get story
         story, reply_markup, image_path = craft_success_story(index, gender)
 
-        if image_path and os.path.exists(image_path):
-            with open(image_path, 'rb') as photo:
-                await query.message.reply_photo(
-                    photo=photo,
-                    caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
-                    parse_mode=constants.ParseMode.HTML,
-                    reply_markup=reply_markup
-                )
-                await query.message.delete()
-        else:
-            await query.edit_message_text(
-                text=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
-                parse_mode=constants.ParseMode.HTML,
-                reply_markup=reply_markup
-            )
+        if image_path.startswith("http"):
+    await query.message.reply_photo(
+        photo=image_path,
+        caption=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
+        parse_mode=constants.ParseMode.HTML,
+        reply_markup=reply_markup
+    )
+    await query.message.delete()
+else:
+    await query.edit_message_text(
+        text=f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!",
+        parse_mode=constants.ParseMode.HTML,
+        reply_markup=reply_markup
+    )
 
     elif data == "terms":
         terms_text = (
