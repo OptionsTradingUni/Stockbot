@@ -412,23 +412,28 @@ def log_post(symbol, content, deposit, profit, user_id=None):
         logger.error(f"Database error: {e}")
 
 # Background posting loop with mentions every 20 mins
+# Background posting loop with realistic random intervals
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
         try:
-            wait_minutes = 20
+            # ⏳ Pick a realistic random interval (minutes)
+            wait_minutes = random.choice([5, 10, 15, 20, 30, 40, 50, 60, 75, 90, 120])
             wait_seconds = wait_minutes * 60
             logger.info(f"Next profit post in {wait_minutes}m at {datetime.now(timezone.utc)}")
             await asyncio.sleep(wait_seconds)
 
-            symbol = random.choice(MEME_COINS)
+            # 🔀 Pick a symbol
             if random.random() < 0.7:
                 symbol = random.choice(MEME_COINS)
             else:
                 symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
             
+            # Generate profit scenario
             deposit, profit, percentage_gain, reason, trading_style = generate_profit_scenario(symbol)
             msg, reply_markup = craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style)
+
+            # ✅ Post to Telegram
             try:
                 await app.bot.send_message(
                     chat_id=TELEGRAM_CHAT_ID,
@@ -440,8 +445,10 @@ async def profit_posting_loop(app):
                 log_post(symbol, msg, deposit, profit)
             except Exception as e:
                 logger.error(f"Failed to post profit for {symbol}: {e}")
+
             await asyncio.sleep(RATE_LIMIT_SECONDS)
 
+            # 🎯 Occasionally also post rankings/status
             if random.random() < 0.2:
                 status_msg, status_reply_markup = craft_trade_status()
                 try:
