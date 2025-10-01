@@ -387,20 +387,25 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
+
+    # Pick a random success story index
     total_stories = len(SUCCESS_STORY_TEMPLATES["male"]) + len(SUCCESS_STORY_TEMPLATES["female"])
-random_index = random.randint(0, total_stories - 1)
+    random_index = random.randint(0, total_stories - 1)
+
     keyboard = [
-    [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-     InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")
-    [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
-     InlineKeyboardButton("Terms of Service", callback_data="terms")],
-    [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
-]
+        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+         InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
+        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
+         InlineKeyboardButton("Terms of Service", callback_data="terms")],
+        [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     welcome_text = (
         f"Welcome, {name}!\n\n"
-        f"At Options Trading University, we provide expert-led training, real-time market analysis, and a thriving community of successful traders. Our proven strategies have helped members achieve consistent gains, with profit updates shared every 20-40 minutes.\n"
+        f"At Options Trading University, we provide expert-led training, real-time market analysis, "
+        f"and a thriving community of successful traders. Our proven strategies have helped members achieve "
+        f"consistent gains, with profit updates shared every 20-40 minutes.\n"
         f"Why join us?\n"
         f"- Access to high-probability trades (up to 900% gains on meme coins).\n"
         f"- Guidance from top traders with a track record of success.\n"
@@ -413,6 +418,7 @@ random_index = random.randint(0, total_stories - 1)
         parse_mode=constants.ParseMode.HTML,
         reply_markup=reply_markup
     )
+
     try:
         with engine.begin() as conn:
             conn.execute(
@@ -421,9 +427,7 @@ random_index = random.randint(0, total_stories - 1)
                 {"id": str(user.id), "u": user.username or "unknown", "d": name}
             )
     except Exception as e:
-        logger.error(f"Error adding user {user.id}: {e}")
-
-# Callback handler for inline buttons
+        logger.error(f"Error adding user {user.id}: {e}")# Callback handler for inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -439,14 +443,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-        elif data.startswith("success_"):
+    elif data.startswith("success_"):
         parts = data.split("_")
 
         if len(parts) == 3:
             # Case: success_any_5
             _, _, index = parts
             action = "show"
-            gender = "any"   # placeholder, ignored in craft_success_story
+            gender = "any"
             index = int(index)
 
         elif len(parts) == 4:
@@ -513,10 +517,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "back":
         total_stories = len(SUCCESS_STORY_TEMPLATES["male"]) + len(SUCCESS_STORY_TEMPLATES["female"])
-random_index = random.randint(0, total_stories - 1)
+        random_index = random.randint(0, total_stories - 1)
+
         keyboard = [
             [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-             InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")
+             InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
             [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
              InlineKeyboardButton("Terms of Service", callback_data="terms")],
             [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
