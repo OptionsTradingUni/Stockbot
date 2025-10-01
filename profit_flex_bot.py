@@ -110,15 +110,14 @@ IMAGE_DIR = os.getenv("IMAGE_DIR", "images/")
 engine = create_engine(DATABASE_URL, future=True)
 metadata = MetaData()
 
-# Rankings cache table
 rankings_cache = Table(
     "rankings_cache", metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("content", String),
     Column("timestamp", DateTime),
-    Column("scope", String),  # "daily", "weekly", "monthly"
     extend_existing=True
 )
+
 
 posts = Table(
     "posts", metadata,
@@ -545,12 +544,47 @@ def generate_profit_scenario(symbol):
 
     return deposit, profit, percentage_gain, random.choice(reasons), trading_style
 
+def assign_badge(name, profit, deposit=1000):
+    """Assign fun badges to traders based on behavior."""
+    if profit / max(deposit, 1) > 20:   # 20x+
+        return "🚀 Moonshot King"
+    if deposit >= 20000:
+        return "🐳 Whale"
+    if random.random() < 0.05:
+        return "💎 Diamond Hands"
+    return ""
+
+def build_rankings_snapshot():
+    """Helper to build a fresh rankings snapshot with badges."""
+    take = min(20, len(RANKING_TRADERS))
+    selected = random.sample(RANKING_TRADERS, take)
+
+    profits = set()
+    ranking_pairs = []
+    for _, name in selected:
+        val = random.randint(2000, 30000) // 50 * 50
+        while val in profits:
+            val = random.randint(2000, 30000) // 50 * 50
+        profits.add(val)
+        ranking_pairs.append((name, val))
+
+    ranking_pairs.sort(key=lambda x: x[1], reverse=True)
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+    lines = []
+    for i, (name, total) in enumerate(ranking_pairs, start=1):
+        badge = medals.get(i, f"{i}.")
+        extra = assign_badge(name, total)
+        badge_text = f" {extra}" if extra else ""
+        lines.append(f"{badge} <b>{name}</b> — ${total:,} profit{badge_text}")
+    return lines
+
 def fetch_cached_rankings(new_name=None, new_profit=None, app=None):
     """
     Returns current rankings.
-    - If cache < 5h old, reuse.
-    - If a new profit beats leaderboard → insert trader, re-sort, announce.
-    - Full refresh every 5h.
+    - Refresh every 5h
+    - Insert new trader if profit beats min
+    - Adds badges dynamically
     """
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:
@@ -563,11 +597,9 @@ def fetch_cached_rankings(new_name=None, new_profit=None, app=None):
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
             lines = row.content.split("\n")
-
             if (now - ts) >= timedelta(hours=5):
                 refresh_needed = True
 
-        # --- Build fresh rankings if empty/expired ---
         if not row or refresh_needed:
             lines = build_rankings_snapshot()
             conn.execute(delete(rankings_cache))
@@ -576,7 +608,6 @@ def fetch_cached_rankings(new_name=None, new_profit=None, app=None):
                 timestamp=now
             ))
 
-        # --- Insert new trader dynamically ---
         elif new_profit and new_name:
             try:
                 ranking_pairs = []
@@ -596,20 +627,20 @@ def fetch_cached_rankings(new_name=None, new_profit=None, app=None):
                     lines = []
                     for i, (name, total) in enumerate(ranking_pairs, start=1):
                         badge = medals.get(i, f"{i}.")
-                        lines.append(f"{badge} <b>{name}</b> — ${total:,} profit")
+                        extra = assign_badge(name, total)
+                        badge_text = f" {extra}" if extra else ""
+                        lines.append(f"{badge} <b>{name}</b> — ${total:,} profit{badge_text}")
 
-                    # Save new snapshot
                     conn.execute(delete(rankings_cache))
                     conn.execute(insert(rankings_cache).values(
                         content="\n".join(lines),
                         timestamp=now
                     ))
 
-                    # 🚨 Announce to group if app is passed
                     if app:
                         asyncio.create_task(app.bot.send_message(
                             chat_id=TELEGRAM_CHAT_ID,
-                            text=f"🔥 BREAKING: <b>{new_name}</b> just entered the Top 20 with ${new_profit:,} profit!",
+                            text=f"🔥 BREAKING: <b>{new_name}</b> entered Top 20 with ${new_profit:,} profit!",
                             parse_mode=constants.ParseMode.HTML
                         ))
 
@@ -645,9 +676,10 @@ def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, tradi
     )
 
     keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-         InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
-    ]
+    [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+     InlineKeyboardButton("Visit Website", url=WEBSITE_URL)],
+    [InlineKeyboardButton("💸 Simulate Your Trade", callback_data="simulate_trade")]
+]
     reply_markup = InlineKeyboardMarkup(keyboard)
     return msg, reply_markup
 
@@ -966,6 +998,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        elif data == "simulate_trade":
+    user = update.effective_user
+    symbol = random.choice(ALL_SYMBOLS)
+    deposit, profit, percentage_gain, reason, trading_style = generate_profit_scenario(symbol)
+
+    msg = (
+        f"💸 <b>Simulated Trade for {user.first_name}</b>\n"
+        f"Symbol: {symbol}\n"
+        f"Deposit: ${deposit:,.2f}\n"
+        f"Profit: ${profit:,.2f}\n"
+        f"ROI: {percentage_gain}%\n"
+        f"Style: {trading_style}\n\n"
+        f"{reason}"
+    )
+
+    try:
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=msg,
+            parse_mode=constants.ParseMode.HTML
+        )
+        await query.answer("✅ Sent to your private chat!", show_alert=False)
+    except Exception:
+        await query.answer("⚠️ Start the bot privately first with /start.", show_alert=True)
 # /status handler
 async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
