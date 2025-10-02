@@ -17,6 +17,7 @@ from sqlalchemy import select, delete, insert
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import pandas as pd
+from sqlalchemy import select, delete, insert, update, text
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
@@ -373,8 +374,9 @@ SUCCESS_STORY_TEMPLATES = {
 def fetch_recent_profits():
     try:
         with engine.connect() as conn:
-            df = pd.read_sql("SELECT profit FROM posts WHERE profit IS NOT NULL ORDER BY posted_at DESC LIMIT 50", conn)
-            return set(df['profit'].tolist())
+            stmt = select(posts.c.profit).where(posts.c.profit != None).order_by(posts.c.posted_at.desc()).limit(50)
+            result = conn.execute(stmt).scalars().all()
+            return set(result)
     except Exception as e:
         logger.error(f"Database error: {e}")
         return set()
@@ -665,14 +667,19 @@ def log_post(symbol, content, deposit, profit, user_id=None):
     try:
         with engine.begin() as conn:
             if user_id:
-                conn.execute(
-                    "UPDATE users SET total_profit = total_profit + :p WHERE user_id = :id",
-                    {"p": profit, "id": user_id}
+                stmt = users.update().where(users.c.user_id == str(user_id)).values(
+                    total_profit=users.c.total_profit + profit
                 )
-            conn.execute(
-                "INSERT INTO posts (symbol, content, deposit, profit, posted_at) VALUES (:s, :c, :d, :pr, :t)",
-                {"s": symbol, "c": content, "d": deposit, "pr": profit, "t": datetime.now(timezone.utc)}
+                conn.execute(stmt)
+
+            stmt = posts.insert().values(
+                symbol=symbol,
+                content=content,
+                deposit=deposit,
+                profit=profit,
+                posted_at=datetime.now(timezone.utc)
             )
+            conn.execute(stmt)
     except Exception as e:
         logger.error(f"Database error: {e}")
 
@@ -774,15 +781,18 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        with engine.begin() as conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO users (user_id, username, display_name, wins, total_trades, total_profit) "
-                "VALUES (:id, :u, :d, 0, 0, 0)",
-                {"id": str(user.id), "u": user.username or "unknown", "d": name}
-            )
-    except Exception as e:
-        logger.error(f"Error adding user {user.id}: {e}")# Callback handler for inline buttons
-# Callback handler for inline buttons
+    with engine.begin() as conn:
+        stmt = users.insert().prefix_with("OR IGNORE").values(
+            user_id=str(user.id),
+            username=user.username or "unknown",
+            display_name=name,
+            wins=0,
+            total_trades=0,
+            total_profit=0
+        )
+        conn.execute(stmt)
+except Exception as e:
+    logger.error(f"Error adding user {user.id}: {e}")
 # Callback handler for inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
