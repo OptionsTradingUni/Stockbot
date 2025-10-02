@@ -82,18 +82,18 @@ STOCK_SYMBOLS = [
     "HWM", "BRK.B", "SOFI", "LEMONADE", "NU", "YOU", "STNE", "ZBRA", "GFI", "ATRO",
     "MU", "RL", "PATH", "CPB", "YUMC", "CLPBY", "STZ", "KVUE", "LLY", "UNH", "XOM",
     "V", "MA", "HD", "COST", "PG", "JNJ", "MRK", "ABBV", "CVX", "WMT", "JPM", "BAC",
-    "WFC", "GS", "C", "DIS", "NFLX", "T", "VZ"
+    "WFC", "GS", "C", "DIS", "NFLX", "T", "VZ", "INTC", "AMD", "QCOM", "ORCL", "CRM"
 ]
 CRYPTO_SYMBOLS = [
     "BTC", "ETH", "SOL", "BNB", "XRP", "DOT", "SHIB", "AVAX", "TRX", "LINK", "ADA",
     "USDT", "USDC", "TRON", "TON", "BCH", "LTC", "NEAR", "MATIC", "UNI", "APT", "SUI",
-    "ARB", "OP", "XLM", "HBAR", "ALGO", "VET"
+    "ARB", "OP", "XLM", "HBAR", "ALGO", "VET", "ATOM", "FTM", "RUNE", "INJ"
 ]
 MEME_COINS = [
     "NIKY", "GRIPPY", "STOSHI", "DOGE", "WIF", "SLERF", "MEME", "KEYCAT", "BABYDOGE",
     "MANYU", "BURN", "PEPE", "SHIB", "FLOKI", "BRETT", "BONK", "MOG", "PONKE", "SAROS",
     "ONYXCOIN", "ZEBEC", "DRC-20", "TURBO", "MEW", "DEGEN", "BOME", "PUPS", "GME",
-    "AMC", "MOON", "SAFEMOON", "SHIBAINU", "CORGI"
+    "AMC", "MOON", "SAFEMOON", "SHIBAINU", "CORGI", "WEN", "BODEN", "SPX", "NEIRO"
 ]
 ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql:///profit_flex")
@@ -108,7 +108,7 @@ metadata = MetaData()
 rankings_cache = Table(
     "rankings_cache", metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("content", String),  # Stores JSON string
+    Column("content", String),
     Column("timestamp", DateTime),
     extend_existing=True
 )
@@ -150,7 +150,7 @@ hall_of_fame = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("trader_name", String),
     Column("profit", Float),
-    Column("scope", String),  # daily, weekly, monthly
+    Column("scope", String),
     Column("timestamp", DateTime)
 )
 
@@ -276,7 +276,7 @@ NEWS_CATALYSTS = {
 
 COUNTRIES = ["USA", "Nigeria", "UK", "Japan", "India", "China", "Russia", "Brazil", "Germany", "France"]
 
-# Expanded trader names with country-specific relevance
+# Expanded trader names
 RANKING_TRADERS = [
     # USA
     ("johnsmith", "John Smith"), ("emilyjones", "Emily Jones"), ("mikebrown", "Mike Brown"),
@@ -304,8 +304,8 @@ RANKING_TRADERS = [
     ("sanjaykumar", "Sanjay Kumar"), ("poojadesai", "Pooja Desai"), ("arjunreddy", "Arjun Reddy"),
     ("kavitajoshi", "Kavita Joshi"),
     # China
-    ("weichen", "Wei Chen"), ("lingzhang", "Ling Zhang"), ("junli", "Jun Li"), ("meiWang", "Mei Wang"),
-    ("haoLiu", "Hao Liu"), ("yiwu", "Yi Wu"), ("xiaoyang", "Xiao Yang"), ("jiahui", "Jia Hui"),
+    ("weichen", "Wei Chen"), ("lingzhang", "Ling Zhang"), ("junli", "Jun Li"), ("meiwang", "Mei Wang"),
+    ("haoliu", "Hao Liu"), ("yiwu", "Yi Wu"), ("xiaoyang", "Xiao Yang"), ("jiahui", "Jia Hui"),
     ("minxu", "Min Xu"), ("fangzhao", "Fang Zhao"),
     # Russia
     ("igorpetrov", "Igor Petrov"), ("olgaivanova", "Olga Ivanova"), ("dmitryvolkov", "Dmitry Volkov"),
@@ -326,10 +326,9 @@ RANKING_TRADERS = [
     ("pierredupont", "Pierre Dupont"), ("clairemartin", "Claire Martin"), ("louislegrand", "Louis Legrand"),
     ("sophieleroy", "Sophie Leroy"), ("thomasmoreau", "Thomas Moreau"), ("julietteroux", "Juliette Roux"),
     ("nicolasdubois", "Nicolas Dubois"), ("emiliegirard", "Emilie Girard"), ("antoinebernard", "Antoine Bernard"),
-    ("camilledurand", "Camille Durand"),
-    # Add more to reach ~1000 names, this is a sample for brevity
+    ("camilledurand", "Camille Durand")
 ]
-# Extend to 1000 names by repeating patterns with variations
+# Extend to 1000 names
 for i in range(100):
     RANKING_TRADERS.extend([
         (f"traderus{i}", f"Trader US{i}"), (f"traderng{i}", f"Trader NG{i}"),
@@ -338,10 +337,13 @@ for i in range(100):
         (f"traderru{i}", f"Trader RU{i}"), (f"traderbr{i}", f"Trader BR{i}"),
         (f"traderde{i}", f"Trader DE{i}"), (f"traderfr{i}", f"Trader FR{i}")
     ])
-RANKING_TRADERS = RANKING_TRADERS[:1000]  # Cap at 1000
+RANKING_TRADERS = RANKING_TRADERS[:1000]
 
 def update_trader_level(trader_id, total_profit):
     """Update trader level based on total profit."""
+    if total_profit is None:
+        logger.error(f"Total profit is None for trader_id {trader_id}, defaulting to 0")
+        total_profit = 0
     level = "Rookie"
     if total_profit >= 100000:
         level = "Legend"
@@ -424,7 +426,7 @@ def initialize_trader_metadata():
                 win_streak=0,
                 level="Rookie",
                 total_deposit=0.0,
-                total_profit=total_profit,
+                total_profit=float(total_profit),  # Ensure float
                 achievements=""
             ))
             update_trader_level(trader_id, total_profit)
@@ -444,7 +446,7 @@ def initialize_hall_of_fame():
             timestamp = datetime.now(timezone.utc) - timedelta(days=random.randint(1, 365))
             conn.execute(insert(hall_of_fame).values(
                 trader_name=trader_name,
-                profit=profit,
+                profit=float(profit),
                 scope=scope,
                 timestamp=timestamp
             ))
@@ -464,30 +466,37 @@ def initialize_posts():
             profit = deposit * random.uniform(2, 8) if random.random() < 0.95 else -random.randint(500, 1200)
             posted_at = datetime.now(timezone.utc) - timedelta(days=random.randint(1, 365))
             content = f"Fake post: {symbol} trade, ${deposit:,} → ${profit:,}"
-            conn.execute(insert(posts).values(
-                symbol=symbol,
-                content=content,
-                deposit=deposit,
-                profit=profit,
-                posted_at=posted_at,
-                trader_id=trader_id
-            ))
-            if profit > 0:
-                conn.execute(
-                    update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(
-                        total_profit=trader_metadata.c.total_profit + profit,
-                        total_deposit=trader_metadata.c.total_deposit + deposit,
-                        win_streak=trader_metadata.c.win_streak + 1
+            try:
+                conn.execute(insert(posts).values(
+                    symbol=symbol,
+                    content=content,
+                    deposit=float(deposit),
+                    profit=float(profit),
+                    posted_at=posted_at,
+                    trader_id=trader_id
+                ))
+                if profit > 0:
+                    conn.execute(
+                        update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(
+                            total_profit=trader_metadata.c.total_profit + profit,
+                            total_deposit=trader_metadata.c.total_deposit + deposit,
+                            win_streak=trader_metadata.c.win_streak + 1
+                        )
                     )
-                )
-                total_profit = conn.execute(
-                    select(trader_metadata.c.total_profit).where(trader_metadata.c.trader_id == trader_id)
-                ).scalar()
-                update_trader_level(trader_id, total_profit)
-                win_streak = conn.execute(
-                    select(trader_metadata.c.win_streak).where(trader_metadata.c.trader_id == trader_id)
-                ).scalar()
-                assign_achievements(trader_id, profit, deposit, win_streak)
+                    total_profit = conn.execute(
+                        select(trader_metadata.c.total_profit).where(trader_metadata.c.trader_id == trader_id)
+                    ).scalar()
+                    if total_profit is None:
+                        logger.error(f"Failed to fetch total_profit for trader_id {trader_id}, defaulting to 0")
+                        total_profit = 0
+                    update_trader_level(trader_id, total_profit)
+                    win_streak = conn.execute(
+                        select(trader_metadata.c.win_streak).where(trader_metadata.c.trader_id == trader_id)
+                    ).scalar() or 0
+                    assign_achievements(trader_id, profit, deposit, win_streak)
+            except Exception as e:
+                logger.error(f"Failed to initialize post for trader_id {trader_id}: {e}")
+                continue
 
 TRADER_STORIES = initialize_stories()
 initialize_trader_metadata()
@@ -500,7 +509,7 @@ def fetch_recent_profits():
             df = pd.read_sql("SELECT profit FROM posts WHERE profit IS NOT NULL ORDER BY posted_at DESC LIMIT 50", conn)
             return set(df['profit'].tolist())
     except Exception as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error in fetch_recent_profits: {e}")
         return set()
 
 def assign_achievements(trader_id, profit, deposit, win_streak):
@@ -635,7 +644,7 @@ def build_rankings_snapshot(scope="overall"):
     ranking_pairs = []
     for row in df.itertuples():
         name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
-        if name:
+        if name and row.total_profit is not None:
             ranking_pairs.append({"name": name, "profit": row.total_profit})
     ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
     return ranking_pairs[:20]
@@ -669,7 +678,7 @@ def build_country_leaderboard(country):
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     for i, row in enumerate(df.itertuples(), 1):
         name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
-        if name:
+        if name and row.total_profit is not None:
             badge = medals.get(i, f"{i}.")
             lines.append(f"{badge} <b>{name}</b> — ${row.total_profit:,} profit")
     return lines
@@ -717,7 +726,7 @@ async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope=
 
         elif new_name and new_profit:
             try:
-                ranking_pairs.append({"name": new_name, "profit": new_profit})
+                ranking_pairs.append({"name": new_name, "profit": float(new_profit)})
                 ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
                 ranking_pairs = ranking_pairs[:20]
                 conn.execute(delete(rankings_cache).where(rankings_cache.c.id == 1))
@@ -750,7 +759,7 @@ async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope=
                 badge = medals.get(i, f"{i}.")
                 extra = assign_badge(name, total, win_streak=win_streak)
                 badge_text = f" {extra} ({level}, {country})" if extra else f" ({level}, {country})"
-                lines.append(f"{badge} <b>{name}</b> — ${total:,} profit{badge_text}")
+                lines.append(f"{badge} <b>{name}</b> — ${total:,.0f} profit{badge_text}")
         return lines
 
 async def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style, is_loss, social_lines=None):
@@ -889,23 +898,26 @@ def log_post(symbol, content, deposit, profit, user_id=None, trader_id=None):
                 total_profit = conn.execute(
                     select(trader_metadata.c.total_profit).where(trader_metadata.c.trader_id == trader_id)
                 ).scalar()
+                if total_profit is None:
+                    logger.error(f"Failed to fetch total_profit for trader_id {trader_id} in log_post, defaulting to 0")
+                    total_profit = 0
                 update_trader_level(trader_id, total_profit)
                 win_streak = conn.execute(
                     select(trader_metadata.c.win_streak).where(trader_metadata.c.trader_id == trader_id)
-                ).scalar()
+                ).scalar() or 0
                 assign_achievements(trader_id, profit, deposit, win_streak)
             conn.execute(
                 insert(posts).values(
                     symbol=symbol,
                     content=content,
-                    deposit=deposit,
-                    profit=profit,
+                    deposit=float(deposit) if deposit is not None else None,
+                    profit=float(profit) if profit is not None else None,
                     posted_at=datetime.now(timezone.utc),
                     trader_id=trader_id
                 )
             )
     except Exception as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error in log_post: {e}")
 
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
@@ -1006,7 +1018,7 @@ async def announce_winner(scope, app):
         conn.execute(
             insert(hall_of_fame).values(
                 trader_name=winner_name,
-                profit=winner_profit,
+                profit=float(winner_profit),
                 scope=scope,
                 timestamp=datetime.now(timezone.utc)
             )
@@ -1045,7 +1057,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 display_name=name,
                 wins=0,
                 total_trades=0,
-                total_profit=0,
+                total_profit=0.0,
                 last_login=datetime.now(timezone.utc),
                 login_streak=streak
             ).on_conflict_do_update(
@@ -1074,10 +1086,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         f"Welcome, {name}!\n\n"
         f"Join Options Trading University for expert-led training and real-time market insights.\n"
-        f"🚀 High-probability trades (up to 900% gains on meme coins)\n"
+        f"🚀 High-probability trades (up to 900% gains)\n"
         f"👨‍🏫 Guidance from top traders\n"
         f"📈 Insights on stocks, crypto, and meme coins\n\n"
-        f"Start your journey now! #TradingSuccess"
+        f"Start now! #TradingSuccess"
     )
     await context.bot.send_message(
         chat_id=chat_id,
@@ -1170,7 +1182,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "hall_of_fame":
         with engine.connect() as conn:
             df = pd.read_sql("SELECT trader_name, profit, scope, timestamp FROM hall_of_fame ORDER BY timestamp DESC LIMIT 10", conn)
-        lines = [f"🏆 <b>{row.trader_name}</b> — ${row.profit:,} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
+        lines = [f"🏆 <b>{row.trader_name}</b> — ${row.profit:,.0f} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
         msg = f"🏛️ <b>Hall of Fame</b> 🏛️\n\n{'\n'.join(lines) if lines else 'No winners yet!'}\n\nJoin {WEBSITE_URL}! #HallOfFame"
         keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
         await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
@@ -1320,7 +1332,7 @@ async def trade_status_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def hall_of_fame_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with engine.connect() as conn:
         df = pd.read_sql("SELECT trader_name, profit, scope, timestamp FROM hall_of_fame ORDER BY timestamp DESC LIMIT 10", conn)
-    lines = [f"🏆 <b>{row.trader_name}</b> — ${row.profit:,} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
+    lines = [f"🏆 <b>{row.trader_name}</b> — ${row.profit:,.0f} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
     msg = f"🏛️ <b>Hall of Fame</b> 🏛️\n\n{'\n'.join(lines) if lines else 'No winners yet!'}\n\nJoin {WEBSITE_URL}! #HallOfFame"
     keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
     try:
