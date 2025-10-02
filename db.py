@@ -9,6 +9,7 @@ from sqlalchemy import (
 from dotenv import load_dotenv
 import os
 import logging
+from data import COUNTRY_TRADERS, RANKING_TRADERS, STOCK_SYMBOLS, CRYPTO_SYMBOLS, MEME_COINS
 
 # Load environment
 load_dotenv()
@@ -22,7 +23,7 @@ engine = create_engine(DATABASE_URL, future=True)
 metadata = MetaData()
 
 # -------------------------
-# TABLE DEFINITIONS
+# TABLES
 # -------------------------
 rankings_cache = Table(
     "rankings_cache", metadata,
@@ -85,22 +86,12 @@ trader_metadata = Table(
     Column("achievements", String)
 )
 
-trending_tickers = Table(
-    "trending_tickers", metadata,
-    Column("symbol", String, primary_key=True),
-    Column("count", Integer, default=0),
-    Column("last_posted", DateTime)
-)
-
 metadata.create_all(engine)
 
-# db.py (add at bottom, after metadata.create_all(engine))
-
+# -------------------------
+# SUCCESS STORIES
+# -------------------------
 def get_success_stories():
-    """
-    Fetch success stories (name, story, image) from DB.
-    Returns: {"male": [...], "female": [...]}
-    """
     with engine.connect() as conn:
         rows = conn.execute(success_stories.select()).fetchall()
         stories = {"male": [], "female": []}
@@ -111,13 +102,9 @@ def get_success_stories():
                 "image": row.image
             })
         return stories
-# -------------------------
-# IMPORT STATIC DATA
-# -------------------------
-from data import COUNTRY_TRADERS, RANKING_TRADERS, STOCK_SYMBOLS, CRYPTO_SYMBOLS, MEME_COINS
 
 # -------------------------
-# INITIALIZATION HELPERS
+# INIT HELPERS
 # -------------------------
 def init_traders_if_needed():
     with engine.begin() as conn:
@@ -164,61 +151,6 @@ def initialize_posts():
             )
 
 # -------------------------
-# UTILITY FUNCTIONS
-# -------------------------
-def fetch_recent_profits():
-    try:
-        with engine.connect() as conn:
-            df = pd.read_sql(
-                "SELECT profit FROM posts WHERE profit IS NOT NULL ORDER BY posted_at DESC LIMIT 50",
-                conn
-            )
-            return set(df['profit'].tolist())
-    except Exception as e:
-        logger.error(f"Database error: {e}")
-        return set()
-
-def update_trader_level(trader_id, total_profit):
-    level = "Rookie"
-    if total_profit >= 100000:
-        level = "Legend"
-    elif total_profit >= 50000:
-        level = "Whale"
-    elif total_profit >= 10000:
-        level = "Pro"
-    with engine.begin() as conn:
-        conn.execute(
-            update(trader_metadata)
-            .where(trader_metadata.c.trader_id == trader_id)
-            .values(level=level)
-        )
-
-def assign_achievements(trader_id, profit, deposit, win_streak):
-    achievements = []
-    if profit / max(deposit, 1) > 20:
-        achievements.append("Moonshot King")
-    if deposit >= 20000:
-        achievements.append("Whale")
-    if win_streak >= 5:
-        achievements.append("Streak Master")
-    if profit >= 10000:
-        achievements.append("Big Winner")
-    if random.random() < 0.05:
-        achievements.append("Diamond Hands")
-    with engine.begin() as conn:
-        existing = conn.execute(
-            select(trader_metadata.c.achievements).where(trader_metadata.c.trader_id == trader_id)
-        ).scalar() or ""
-        current_achievements = set(existing.split(",")) if existing else set()
-        current_achievements.update(achievements)
-        conn.execute(
-            update(trader_metadata)
-            .where(trader_metadata.c.trader_id == trader_id)
-            .values(achievements=",".join(current_achievements))
-        )
-    return achievements
-
-# -------------------------
 # RANKINGS + LEADERBOARDS
 # -------------------------
 def cache_rankings(scope, ranking_pairs):
@@ -235,15 +167,29 @@ def fetch_cached_rankings(scope="overall"):
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache).where(rankings_cache.c.scope == scope)).fetchone()
+        old_names = []
         if row:
             ts = row.timestamp
             if ts and (now - ts) < timedelta(hours=5):
-                return json.loads(row.content)
-        # fallback: rebuild
-        return build_rankings_snapshot(scope)
+                rankings = json.loads(row.content)
+                old_names = [r["name"] for r in rankings]
+                return rankings, None
+
+        rankings = build_rankings_snapshot(scope)
+
+        # detect new entry
+        new_names = [r["name"] for r in rankings]
+        new_entry = None
+        if old_names:
+            for name in new_names[:20]:
+                if name not in old_names:
+                    new_entry = name
+                    break
+
+        cache_rankings(scope, rankings)
+        return rankings, new_entry
 
 def build_rankings_snapshot(scope="overall"):
-    """scope = overall, daily, weekly, monthly"""
     with engine.connect() as conn:
         if scope == "daily":
             start = datetime.now(timezone.utc) - timedelta(days=1)
@@ -277,58 +223,10 @@ def build_rankings_snapshot(scope="overall"):
         if name:
             ranking_pairs.append({"name": name, "profit": row.total_profit})
     ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
-    ranking_pairs = ranking_pairs[:20]
-    cache_rankings(scope, ranking_pairs)
-    return ranking_pairs
-
-def build_asset_leaderboard(asset_type):
-    symbols = MEME_COINS if asset_type == "meme" else CRYPTO_SYMBOLS if asset_type == "crypto" else STOCK_SYMBOLS
-    with engine.connect() as conn:
-        df = pd.read_sql(
-            f"SELECT trader_id, SUM(profit) as total_profit, SUM(deposit) as total_deposit FROM posts "
-            f"WHERE symbol IN ({','.join([f'\"{s}\"' for s in symbols])}) "
-            f"GROUP BY trader_id ORDER BY total_profit DESC LIMIT 10",
-            conn
-        )
-    lines = []
-    for i, row in enumerate(df.itertuples(), 1):
-        name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
-        if name:
-            roi = round((row.total_profit / row.total_deposit) * 100, 1) if row.total_deposit > 0 else 0
-            lines.append(f"{i}. {name} — ${int(row.total_profit):,} profit (ROI: {roi}%)")
-    return lines
-
-def build_country_leaderboard(country):
-    with engine.connect() as conn:
-        df = pd.read_sql(
-            f"SELECT t.trader_id, t.total_profit FROM trader_metadata t "
-            f"WHERE t.country = :c ORDER BY t.total_profit DESC LIMIT 10",
-            conn, params={"c": country}
-        )
-    lines = []
-    for i, row in enumerate(df.itertuples(), 1):
-        name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
-        if name:
-            lines.append(f"{i}. {name} — ${int(row.total_profit):,} profit")
-    return lines
-
-def build_roi_leaderboard():
-    with engine.connect() as conn:
-        df = pd.read_sql(
-            "SELECT trader_id, SUM(profit) as total_profit, SUM(deposit) as total_deposit FROM posts "
-            "GROUP BY trader_id HAVING total_deposit > 0 ORDER BY (SUM(profit) / SUM(deposit)) DESC LIMIT 10",
-            conn
-        )
-    lines = []
-    for i, row in enumerate(df.itertuples(), 1):
-        name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
-        if name:
-            roi = round((row.total_profit / row.total_deposit) * 100, 1)
-            lines.append(f"{i}. {name} — {roi}% ROI (${int(row.total_profit):,} profit)")
-    return lines
+    return ranking_pairs[:20]
 
 # -------------------------
-# AUTO INITIALIZE
+# AUTO INIT
 # -------------------------
 init_traders_if_needed()
 initialize_posts()
