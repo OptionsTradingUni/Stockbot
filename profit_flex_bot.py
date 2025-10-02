@@ -795,6 +795,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.execute(stmt)
     except Exception as e:
         logger.error(f"Error adding user {user.id}: {e}")
+        
 # Callback handler for inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
