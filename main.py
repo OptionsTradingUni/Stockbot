@@ -1,51 +1,54 @@
+# main.py
 import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
-from telegram import constants
+from dotenv import load_dotenv
+import os
 
+# Import handlers
 from handlers import (
     start_handler,
-    button_handler
+    status_handler,
+    help_handler,
+    trade_status_handler,
+    hall_of_fame_handler,
+    button_handler,
 )
-from db import init_db
-from data import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+
+# Import posting loop
 from posting import profit_posting_loop
 
-# -------------------------
-# Logging
-# -------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+# Load environment
+load_dotenv()
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# Logger
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# -------------------------
-# Bot main
-# -------------------------
 def main():
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        raise SystemExit("❌ TELEGRAM_TOKEN or TELEGRAM_CHAT_ID missing from environment!")
+    if TELEGRAM_TOKEN is None or TELEGRAM_CHAT_ID is None:
+        raise SystemExit("❌ TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set in .env")
 
-    # Init DB tables
-    init_db()
-
-    # Build app
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # Handlers
+    # Register commands
     app.add_handler(CommandHandler("start", start_handler))
+    app.add_handler(CommandHandler("status", status_handler))
+    app.add_handler(CommandHandler("help", help_handler))
+    app.add_handler(CommandHandler("trade_status", trade_status_handler))
+    app.add_handler(CommandHandler("hall_of_fame", hall_of_fame_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    # Startup hook
+    # Startup task
     async def on_startup(app):
         app.create_task(profit_posting_loop(app))
-        logger.info("✅ Profit posting loop scheduled.")
+        logger.info("✅ Profit posting task started.")
 
     app.post_init = on_startup
 
     logger.info("🚀 Bot starting...")
-    app.run_polling(allowed_updates=constants.Update.ALL_TYPES)
-
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
