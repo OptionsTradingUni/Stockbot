@@ -2,6 +2,7 @@ import os
 import random
 import asyncio
 import logging
+import json
 from sqlalchemy import select, delete, insert, update
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
@@ -15,7 +16,7 @@ used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
 used_profits: dict[int, float] = {}   # value -> last_used_timestamp
 
 DEPOSIT_TTL_SECONDS = 6 * 60 * 60     # 6 hours
-PROFIT_TTL_SECONDS  = 12 * 60 * 60    # 12 hours
+PROFIT_TTL_SECONDS = 12 * 60 * 60     # 12 hours
 
 def _prune_used(used_dict: dict[int, float], ttl_seconds: int) -> None:
     """Remove entries older than ttl_seconds."""
@@ -25,10 +26,7 @@ def _prune_used(used_dict: dict[int, float], ttl_seconds: int) -> None:
         used_dict.pop(v, None)
 
 def _unique_deposit(min_val: int, max_val: int) -> int:
-    """
-    Return a deposit that hasn't been used recently.
-    No rounding — leaves 'organic' numbers like 817, 1045, etc.
-    """
+    """Return a deposit that hasn't been used recently."""
     _prune_used(used_deposits, DEPOSIT_TTL_SECONDS)
     now = datetime.now().timestamp()
 
@@ -43,10 +41,7 @@ def _unique_deposit(min_val: int, max_val: int) -> int:
     return oldest_val
 
 def _unique_profit(candidate_fn) -> int:
-    """
-    Generate a profit that isn't in recent DB rows or recent cooldown.
-    Rounds to the nearest 50 to look realistic.
-    """
+    """Generate a profit that isn't in recent DB rows or recent cooldown."""
     _prune_used(used_profits, PROFIT_TTL_SECONDS)
     now = datetime.now().timestamp()
     recent = fetch_recent_profits()
@@ -98,7 +93,7 @@ metadata = MetaData()
 rankings_cache = Table(
     "rankings_cache", metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("content", String),
+    Column("content", String),  # Stores JSON string
     Column("timestamp", DateTime),
     extend_existing=True
 )
@@ -110,7 +105,8 @@ posts = Table(
     Column("content", String),
     Column("deposit", Float),
     Column("profit", Float),
-    Column("posted_at", DateTime)
+    Column("posted_at", DateTime),
+    Column("trader_id", String),  # Added trader_id column
 )
 
 users = Table(
@@ -121,7 +117,6 @@ users = Table(
     Column("wins", Integer),
     Column("total_trades", Integer),
     Column("total_profit", Float, default=0),
-    # NEW: Added for login streaks
     Column("last_login", DateTime),
     Column("login_streak", Integer, default=0)
 )
@@ -135,7 +130,6 @@ success_stories = Table(
     Column("image", String)
 )
 
-# NEW: Table for Hall of Fame
 hall_of_fame = Table(
     "hall_of_fame", metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
@@ -145,7 +139,6 @@ hall_of_fame = Table(
     Column("timestamp", DateTime)
 )
 
-# NEW: Table for trader metadata (countries, streaks, levels)
 trader_metadata = Table(
     "trader_metadata", metadata,
     Column("trader_id", String, primary_key=True),
@@ -157,7 +150,6 @@ trader_metadata = Table(
     Column("achievements", String)  # Comma-separated list of badges
 )
 
-# NEW: Table for tracking trending tickers
 trending_tickers = Table(
     "trending_tickers", metadata,
     Column("symbol", String, primary_key=True),
@@ -204,7 +196,6 @@ SUCCESS_STORY_TEMPLATES = {
     ]
 }
 
-# NEW: Fake news catalysts for profit posts
 NEWS_CATALYSTS = {
     "stocks": [
         "surges after strong earnings report!",
@@ -229,10 +220,10 @@ NEWS_CATALYSTS = {
     ]
 }
 
-# NEW: Countries for trader metadata
 COUNTRIES = ["USA", "Nigeria", "UK", "Japan", "India", "China", "Russia", "Brazil", "Germany", "France"]
 
 def initialize_stories():
+    global TRADER_STORIES
     with engine.begin() as conn:
         existing = conn.execute(success_stories.select()).fetchall()
         if existing:
@@ -244,6 +235,7 @@ def initialize_stories():
                     "story": row.story,
                     "image": row.image
                 })
+            TRADER_STORIES = stories
             return stories
 
         logger.info("Generating new success stories...")
@@ -283,9 +275,9 @@ def initialize_stories():
                     "image": image_url
                 })
 
+        TRADER_STORIES = stories
         return stories
 
-# NEW: Initialize trader metadata with countries and levels
 def initialize_trader_metadata():
     with engine.begin() as conn:
         existing = conn.execute(select(trader_metadata)).fetchall()
@@ -306,8 +298,6 @@ def initialize_trader_metadata():
             ))
 
 TRADER_STORIES = initialize_stories()
-initialize_trader_metadata()
-
 RANKING_TRADERS = [
     ("RobertGarcia", "Robert Garcia"), ("JamesLopez", "James Lopez"),
     ("WilliamRodriguez", "William Rodriguez"), ("DanielPerez", "Daniel Perez"),
@@ -409,6 +399,7 @@ RANKING_TRADERS = [
     ("NataliaPetrova", "Natalia Petrova"), ("SvetlanaIvanova", "Svetlana Ivanova"),
     ("AnastasiaSokolova", "Anastasia Sokolova"), ("ElenaMorozova", "Elena Morozova")
 ]
+initialize_trader_metadata()
 
 def fetch_recent_profits():
     try:
@@ -419,7 +410,6 @@ def fetch_recent_profits():
         logger.error(f"Database error: {e}")
         return set()
 
-# NEW: Update trader level based on total profit
 def update_trader_level(trader_id, total_profit):
     level = "Rookie"
     if total_profit >= 100000:
@@ -433,7 +423,6 @@ def update_trader_level(trader_id, total_profit):
             update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(level=level)
         )
 
-# NEW: Assign achievements based on trader actions
 def assign_achievements(trader_id, profit, deposit, win_streak):
     achievements = []
     if profit / max(deposit, 1) > 20:
@@ -486,17 +475,28 @@ def generate_profit_scenario(symbol):
 
     percentage_gain = round((profit / deposit - 1) * 100, 1) if not is_loss else round(profit / deposit * 100, 1)
 
-    # Update trending tickers
+    # Update trending tickers (SQLite-compatible)
     with engine.begin() as conn:
-        conn.execute(
-            insert(trending_tickers).values(symbol=symbol, count=1, last_posted=datetime.now(timezone.utc))
-            .on_conflict_do_update(
-                index_elements=['symbol'],
-                set_={"count": trending_tickers.c.count + 1, "last_posted": datetime.now(timezone.utc)}
+        existing = conn.execute(
+            select(trending_tickers.c.count, trending_tickers.c.last_posted)
+            .where(trending_tickers.c.symbol == symbol)
+        ).fetchone()
+        if existing:
+            count, last_posted = existing
+            conn.execute(
+                update(trending_tickers)
+                .where(trending_tickers.c.symbol == symbol)
+                .values(count=count + 1, last_posted=datetime.now(timezone.utc))
             )
-        )
+        else:
+            conn.execute(
+                insert(trending_tickers).values(
+                    symbol=symbol,
+                    count=1,
+                    last_posted=datetime.now(timezone.utc)
+                )
+            )
 
-    # Assign trading style and reason
     if symbol in STOCK_SYMBOLS:
         trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
         reasons = [
@@ -525,7 +525,6 @@ def generate_profit_scenario(symbol):
             f"{symbol} {'crashed' if is_loss else 'leg-up'} after catalysts and chatter."
         ]
 
-    # Add news catalyst
     catalyst_type = "meme_coins" if symbol in MEME_COINS else "crypto" if symbol in CRYPTO_SYMBOLS else "stocks"
     news_catalyst = random.choice(NEWS_CATALYSTS[catalyst_type]) if not is_loss else "hit by sudden market volatility!"
     reason = f"{random.choice(reasons)} ({news_catalyst}) (+{percentage_gain}%{' loss' if is_loss else ''})"
@@ -561,26 +560,11 @@ def build_rankings_snapshot(scope="overall"):
             conn.execute(
                 update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(total_profit=val)
             )
-        ranking_pairs.append((name, val))
+        ranking_pairs.append({"name": name, "profit": val})
 
-    ranking_pairs.sort(key=lambda x: x[1], reverse=True)
-    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
+    return ranking_pairs
 
-    lines = []
-    for i, (name, total) in enumerate(ranking_pairs, start=1):
-        with engine.connect() as conn:
-            trader_data = conn.execute(
-                select(trader_metadata.c.level, trader_metadata.c.win_streak, trader_metadata.c.country)
-                .where(trader_metadata.c.trader_id == next(id for id, n in RANKING_TRADERS if n == name))
-            ).fetchone()
-        level, win_streak, country = trader_data
-        badge = medals.get(i, f"{i}.")
-        extra = assign_badge(name, total, win_streak=win_streak)
-        badge_text = f" {extra} ({level}, {country})" if extra else f" ({level}, {country})"
-        lines.append(f"{badge} <b>{name}</b> — ${total:,} profit{badge_text}")
-    return lines
-
-# NEW: Build asset-type leaderboard
 def build_asset_leaderboard(asset_type):
     symbols = MEME_COINS if asset_type == "meme" else CRYPTO_SYMBOLS if asset_type == "crypto" else STOCK_SYMBOLS
     with engine.connect() as conn:
@@ -598,7 +582,6 @@ def build_asset_leaderboard(asset_type):
         lines.append(f"{badge} <b>{name}</b> — ${row.total_profit:,} profit (ROI: {roi}%)")
     return lines
 
-# NEW: Build country-based leaderboard
 def build_country_leaderboard(country):
     with engine.connect() as conn:
         df = pd.read_sql(
@@ -614,7 +597,6 @@ def build_country_leaderboard(country):
         lines.append(f"{badge} <b>{name}</b> — ${row.total_profit:,} profit")
     return lines
 
-# NEW: Build ROI-based leaderboard
 def build_roi_leaderboard():
     with engine.connect() as conn:
         df = pd.read_sql(
@@ -636,72 +618,64 @@ def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope="overa
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache).where(rankings_cache.c.id == 1)).fetchone()
         refresh_needed = False
-        lines = []
+        ranking_pairs = []
 
         if row:
             ts = row.timestamp
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
-            lines = row.content.split("\n")
+            ranking_pairs = json.loads(row.content)
             if (now - ts) >= timedelta(hours=5):
                 refresh_needed = True
 
         if not row or refresh_needed:
-            lines = build_rankings_snapshot(scope)
+            ranking_pairs = build_rankings_snapshot(scope)
             conn.execute(delete(rankings_cache).where(rankings_cache.c.id == 1))
             conn.execute(insert(rankings_cache).values(
                 id=1,
-                content="\n".join(lines),
+                content=json.dumps(ranking_pairs),
                 timestamp=now
             ))
 
-        elif new_profit and new_name:
+        elif new_name and new_profit:
             try:
-                ranking_pairs = []
-                for line in lines:
-                    parts = line.split("—")
-                    name = parts[0].split()[-1].strip("</b>")
-                    profit = int("".join([c for c in parts[1] if c.isdigit()]))
-                    ranking_pairs.append((name, profit))
+                ranking_pairs.append({"name": new_name, "profit": new_profit})
+                ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
+                ranking_pairs = ranking_pairs[:20]
+                conn.execute(delete(rankings_cache).where(rankings_cache.c.id == 1))
+                conn.execute(insert(rankings_cache).values(
+                    id=1,
+                    content=json.dumps(ranking_pairs),
+                    timestamp=now
+                ))
 
-                min_profit = ranking_pairs[-1][1]
-                if new_profit > min_profit:
-                    ranking_pairs.append((new_name, new_profit))
-                    ranking_pairs.sort(key=lambda x: x[1], reverse=True)
-                    ranking_pairs = ranking_pairs[:20]
-
-                    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-                    lines = []
-                    for i, (name, total) in enumerate(ranking_pairs, start=1):
-                        trader_id = next(id for id, n in RANKING_TRADERS if n == name)
-                        with engine.connect() as conn:
-                            trader_data = conn.execute(
-                                select(trader_metadata.c.level, trader_metadata.c.win_streak, trader_metadata.c.country)
-                                .where(trader_metadata.c.trader_id == trader_id)
-                            ).fetchone()
-                        level, win_streak, country = trader_data
-                        badge = medals.get(i, f"{i}.")
-                        extra = assign_badge(name, total, win_streak=win_streak)
-                        badge_text = f" {extra} ({level}, {country})" if extra else f" ({level}, {country})"
-                        lines.append(f"{badge} <b>{name}</b> — ${total:,} profit{badge_text}")
-
-                    conn.execute(delete(rankings_cache).where(rankings_cache.c.id == 1))
-                    conn.execute(insert(rankings_cache).values(
-                        id=1,
-                        content="\n".join(lines),
-                        timestamp=now
-                    ))
-
-                    if app:
-                        asyncio.create_task(app.bot.send_message(
-                            chat_id=TELEGRAM_CHAT_ID,
-                            text=f"🔥 BREAKING: <b>{new_name}</b> entered Top 20 with ${new_profit:,} profit!",
-                            parse_mode=constants.ParseMode.HTML
-                        ))
-
+                if app:
+                    await app.bot.send_message(
+                        chat_id=TELEGRAM_CHAT_ID,
+                        text=f"🔥 BREAKING: <b>{new_name}</b> entered Top 20 with ${new_profit:,} profit!",
+                        parse_mode=constants.ParseMode.HTML
+                    )
             except Exception as e:
                 logger.error(f"Ranking insertion error: {e}")
 
+        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+        lines = []
+        for i, entry in enumerate(ranking_pairs, start=1):
+            name, total = entry["name"], entry["profit"]
+            try:
+                trader_id = next(id for id, n in RANKING_TRADERS if n == name)
+            except StopIteration:
+                trader_id = f"user_{name}"  # Handle user names not in RANKING_TRADERS
+            with engine.connect() as conn:
+                trader_data = conn.execute(
+                    select(trader_metadata.c.level, trader_metadata.c.win_streak, trader_metadata.c.country)
+                    .where(trader_metadata.c.trader_id == trader_id)
+                ).fetchone() or ("Rookie", 0, "Unknown")
+            level, win_streak, country = trader_data
+            badge = medals.get(i, f"{i}.")
+            extra = assign_badge(name, total, win_streak=win_streak)
+            badge_text = f" {extra} ({level}, {country})" if extra else f" ({level}, {country})"
+            lines.append(f"{badge} <b>{name}</b> — ${total:,} profit{badge_text}")
         return lines
 
 def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style, is_loss, social_lines=None):
@@ -711,12 +685,11 @@ def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, tradi
     if social_lines is None:
         social_lines = fetch_cached_rankings()
 
-    social_text = "\n".join(social_lines[:5])  # Show top 5 only
+    social_text = "\n".join(social_lines[:5])
     mention = random.choice(RANKING_TRADERS)[1]
     tag = "#MemeCoinGains #CryptoTrends" if symbol in MEME_COINS else "#StockMarket #CryptoWins"
     asset_desc = "Meme Coin" if symbol in MEME_COINS else symbol
 
-    # NEW: Add streak info
     trader_id, trader_name = random.choice(RANKING_TRADERS)
     with engine.connect() as conn:
         streak = conn.execute(
@@ -768,7 +741,6 @@ def craft_success_story(current_index, gender):
 def craft_trade_status():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     social_lines = fetch_cached_rankings()
-    # NEW: Greed/Fear Index
     greed_fear = random.randint(0, 100)
     mood = "🐂 Bullish" if greed_fear > 60 else "🐻 Bearish" if greed_fear < 40 else "🟡 Neutral"
     return (
@@ -776,14 +748,13 @@ def craft_trade_status():
         f"As of {ts}:\n"
         f"{'\n'.join(social_lines)}\n\n"
         f"📊 Market Mood: {mood} (Greed/Fear: {greed_fear}/100)\n"
-        f"Join the community at Options Trading University for more trading insights! #TradingCommunity"
+        f"Join the community at Options Trading University! #TradingCommunity"
     ), InlineKeyboardMarkup([
         [InlineKeyboardButton("Back", callback_data="back"),
          InlineKeyboardButton("Country Leaderboard", callback_data="country_leaderboard")],
         [InlineKeyboardButton("Asset Leaderboard", callback_data="asset_leaderboard")]
     ])
 
-# NEW: Craft market recap
 def craft_market_recap():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     top_symbol = pd.read_sql(
@@ -799,7 +770,6 @@ def craft_market_recap():
         f"Join Options Trading University to catch the next wave! #MarketRecap"
     ), InlineKeyboardMarkup([[InlineKeyboardButton("Back", callback_data="back")]])
 
-# NEW: Craft trending ticker alert
 def craft_trending_ticker_alert():
     with engine.connect() as conn:
         df = pd.read_sql(
@@ -915,7 +885,6 @@ async def profit_posting_loop(app):
 
                 fetch_cached_rankings(new_name=trader_name, new_profit=profit, app=app)
 
-                # NEW: Check for trade of the day
                 if profit > 10000 and not is_loss:
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
@@ -942,7 +911,6 @@ async def profit_posting_loop(app):
                 except Exception as e:
                     logger.error(f"Failed to post trade status: {e}")
 
-            # NEW: Daily market recap
             if (datetime.now(timezone.utc) - last_recap) >= timedelta(days=1):
                 recap_msg, recap_reply_markup = craft_market_recap()
                 await app.bot.send_message(
@@ -953,7 +921,6 @@ async def profit_posting_loop(app):
                 )
                 last_recap = datetime.now(timezone.utc)
 
-            # NEW: Trending ticker alert
             if random.random() < 0.1:
                 trend_msg, trend_reply_markup = craft_trending_ticker_alert()
                 if trend_msg:
@@ -964,7 +931,6 @@ async def profit_posting_loop(app):
                         reply_markup=trend_reply_markup
                     )
 
-            # NEW: Polls
             if random.random() < 0.05:
                 poll_question = "Which asset will pump next?"
                 options = random.sample(ALL_SYMBOLS, 4)
@@ -994,7 +960,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
 
-    # NEW: Update login streak
     with engine.begin() as conn:
         user_data = conn.execute(select(users.c.last_login, users.c.login_streak).where(users.c.user_id == str(user.id))).fetchone()
         if user_data:
@@ -1018,7 +983,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=constants.ParseMode.HTML
             )
 
-    total_stories = len(SUCCESS_STORY_TEMPLATES["male"]) + len(SUCCESS_STORY_TEMPLATES["female"])
+    total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
     random_index = random.randint(0, total_stories - 1)
 
     keyboard = [
@@ -1066,6 +1031,64 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         logger.error(f"Error adding user {user.id}: {e}")
+
+async def simulate_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+    symbol = random.choice(ALL_SYMBOLS)
+    deposit, profit, percentage_gain, reason, trading_style, is_loss = generate_profit_scenario(symbol)
+    
+    with engine.begin() as conn:
+        user_data = conn.execute(
+            select(users.c.total_profit, users.c.total_trades, users.c.wins)
+            .where(users.c.user_id == str(user.id))
+        ).fetchone()
+        if user_data:
+            total_profit, total_trades, wins = user_data
+            total_profit += profit
+            total_trades += 1
+            wins += 1 if profit > 0 else 0
+            conn.execute(
+                update(users).where(users.c.user_id == str(user.id)).values(
+                    total_profit=total_profit,
+                    total_trades=total_trades,
+                    wins=wins
+                )
+            )
+        else:
+            conn.execute(
+                insert(users).values(
+                    user_id=str(user.id),
+                    username=user.username or "unknown",
+                    display_name=user.first_name or "Trader",
+                    total_profit=profit,
+                    total_trades=1,
+                    wins=1 if profit > 0 else 0,
+                    last_login=datetime.now(timezone.utc),
+                    login_streak=1
+                )
+            )
+    
+    log_post(symbol, f"Simulated trade for {user.first_name}", deposit, profit, user_id=str(user.id))
+    
+    if profit > 0:
+        fetch_cached_rankings(new_name=user.first_name or user.username, new_profit=profit, app=context.application)
+    
+    msg = (
+        f"💸 <b>Simulated Trade for {user.first_name}</b>\n"
+        f"Symbol: {symbol}\n"
+        f"Deposit: ${deposit:,.2f}\n"
+        f"{'Loss' if is_loss else 'Profit'}: ${abs(profit):,.2f}\n"
+        f"ROI: {abs(percentage_gain)}%{' Loss' if is_loss else ''}\n"
+        f"Style: {trading_style}\n\n"
+        f"{reason}\n\n"
+        f"Check your ranking with /trade_status!"
+    )
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=msg,
+        parse_mode=constants.ParseMode.HTML
+    )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1259,6 +1282,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"/start - Welcome message and community link\n"
         f"/status - View current market focus\n"
         f"/trade_status - Check top trader rankings\n"
+        f"/simulate - Simulate a trade and track your profit\n"
         f"/help - Display this help menu\n"
         f"/hall_of_fame - View past winners\n\n"
         f"Profit updates auto-post every 20-40 minutes. Join us at Options Trading University! #TradingSuccess"
@@ -1295,7 +1319,6 @@ async def trade_status_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode=constants.ParseMode.HTML
         )
 
-# NEW: Hall of Fame handler
 async def hall_of_fame_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with engine.connect() as conn:
         df = pd.read_sql("SELECT trader_name, profit, scope, timestamp FROM hall_of_fame ORDER BY timestamp DESC LIMIT 10", conn)
@@ -1325,6 +1348,7 @@ def main():
     app.add_handler(CommandHandler("help", help_handler))
     app.add_handler(CommandHandler("trade_status", trade_status_handler))
     app.add_handler(CommandHandler("hall_of_fame", hall_of_fame_handler))
+    app.add_handler(CommandHandler("simulate", simulate_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
 
     async def on_startup(app):
