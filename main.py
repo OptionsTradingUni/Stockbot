@@ -1,54 +1,61 @@
-# main.py
-import logging
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
-from dotenv import load_dotenv
 import os
-
-# Import handlers
+import logging
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from dotenv import load_dotenv
 from handlers import (
-    start_handler,
-    status_handler,
-    help_handler,
-    trade_status_handler,
-    hall_of_fame_handler,
-    button_handler,
+    start, status, trade_status, help_command, hall_of_fame,
+    success_stories, prev_success, next_success, reaction_callback
 )
+from utils import post_profit_alert, initialize_data
+from db import init_db
 
-# Import posting loop
-from posting import profit_posting_loop
-
-# Load environment
-load_dotenv()
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# Logger
-logging.basicConfig(level=logging.INFO)
+# Logging setup
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-def main():
-    if TELEGRAM_TOKEN is None or TELEGRAM_CHAT_ID is None:
-        raise SystemExit("❌ TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set in .env")
+async def main():
+    # Load environment variables
+    load_dotenv()
+    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not TOKEN:
+        raise ValueError("No TELEGRAM_BOT_TOKEN found in .env")
 
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # Initialize database
+    init_db()
+    initialize_data()
 
-    # Register commands
-    app.add_handler(CommandHandler("start", start_handler))
-    app.add_handler(CommandHandler("status", status_handler))
-    app.add_handler(CommandHandler("help", help_handler))
-    app.add_handler(CommandHandler("trade_status", trade_status_handler))
-    app.add_handler(CommandHandler("hall_of_fame", hall_of_fame_handler))
-    app.add_handler(CallbackQueryHandler(button_handler))
+    # Set up Telegram bot
+    application = Application.builder().token(TOKEN).build()
 
-    # Startup task
-    async def on_startup(app):
-        app.create_task(profit_posting_loop(app))
-        logger.info("✅ Profit posting task started.")
+    # Add command handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("trade_status", trade_status))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("hall_of_fame", hall_of_fame))
+    
+    # Add callback query handlers
+    application.add_handler(CallbackQueryHandler(success_stories, pattern="^success_"))
+    application.add_handler(CallbackQueryHandler(prev_success, pattern="^prev_success$"))
+    application.add_handler(CallbackQueryHandler(next_success, pattern="^next_success$"))
+    application.add_handler(CallbackQueryHandler(reaction_callback, pattern="^(fire|rocket|shock)$"))
 
-    app.post_init = on_startup
+    # Set up scheduler for autopilot posts
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(post_profit_alert, "interval", minutes=5, args=[application.bot])
+    scheduler.start()
 
-    logger.info("🚀 Bot starting...")
-    app.run_polling()
+    # Start bot
+    try:
+        await application.run_polling()
+    except Exception as e:
+        logger.error(f"Error running bot: {e}")
+        raise
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
