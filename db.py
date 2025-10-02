@@ -1,232 +1,187 @@
+import sqlite3
 import random
-import json
-from datetime import datetime, timezone, timedelta
-import pandas as pd
-from sqlalchemy import (
-    create_engine, MetaData, Table, Column, Integer, String,
-    Float, DateTime, select, insert, update, delete
-)
-from dotenv import load_dotenv
-import os
+from datetime import datetime, timedelta
 import logging
-from data import COUNTRY_TRADERS, RANKING_TRADERS, STOCK_SYMBOLS, CRYPTO_SYMBOLS, MEME_COINS
+from data import TRADERS, SUCCESS_STORY_TEMPLATES
 
-# Load environment
-load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///profit_flex.db")
-
-# Logger
 logger = logging.getLogger(__name__)
 
-# Init DB
-engine = create_engine(DATABASE_URL, future=True)
-metadata = MetaData()
+def init_db():
+    conn = sqlite3.connect("trading_bot.db")
+    c = conn.cursor()
 
-# -------------------------
-# TABLES
-# -------------------------
-rankings_cache = Table(
-    "rankings_cache", metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("scope", String),  # overall, daily, weekly, monthly
-    Column("content", String),  # JSON of rankings
-    Column("timestamp", DateTime),
-    extend_existing=True
-)
+    # Create tables
+    c.execute('''CREATE TABLE IF NOT EXISTS config (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message TEXT,
+        timestamp DATETIME,
+        fire INTEGER DEFAULT 0,
+        rocket INTEGER DEFAULT 0,
+        shock INTEGER DEFAULT 0
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT,
+        last_login DATETIME,
+        login_streak INTEGER
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS success_stories (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        nationality TEXT,
+        gender TEXT,
+        deposit INTEGER,
+        profit INTEGER,
+        symbol TEXT,
+        image_url TEXT
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS hall_of_fame (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        nationality TEXT,
+        profit INTEGER,
+        scope TEXT,
+        date DATETIME
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS trader_metadata (
+        trader_id INTEGER PRIMARY KEY,
+        name TEXT,
+        nationality TEXT,
+        profit INTEGER,
+        roi REAL,
+        level TEXT,
+        badges TEXT
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS trending_tickers (
+        symbol TEXT PRIMARY KEY,
+        count INTEGER
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS rankings_cache (
+        type TEXT PRIMARY KEY,
+        data TEXT,
+        timestamp DATETIME
+    )''')
 
-posts = Table(
-    "posts", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("symbol", String),
-    Column("content", String),
-    Column("deposit", Float),
-    Column("profit", Float),
-    Column("posted_at", DateTime),
-    Column("trader_id", String),
-)
+    # Check schema version
+    c.execute("SELECT value FROM config WHERE key = 'version'")
+    current_version = c.fetchone()
+    new_version = "1.0.0"
+    if not current_version or current_version[0] != new_version:
+        logger.info("Initializing database with new version")
+        c.execute("DELETE FROM posts")
+        c.execute("DELETE FROM trader_metadata")
+        c.execute("DELETE FROM hall_of_fame")
+        c.execute("DELETE FROM success_stories")
+        c.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('version', ?)", (new_version,))
 
-users = Table(
-    "users", metadata,
-    Column("user_id", String, primary_key=True),
-    Column("username", String),
-    Column("display_name", String),
-    Column("wins", Integer),
-    Column("total_trades", Integer),
-    Column("total_profit", Float, default=0),
-    Column("last_login", DateTime),
-    Column("login_streak", Integer, default=0)
-)
+        # Initialize trader_metadata
+        for trader in TRADERS:
+            profit = random.randint(1000, 50000)
+            roi = round(random.uniform(5.0, 300.0), 2)
+            level = "Rookie" if profit < 5000 else "Pro" if profit < 20000 else "Whale" if profit < 40000 else "Legend"
+            badges = random.choice(["", "Moonshot King", "Streak Master", "Meme Lord"]) if profit > 10000 else ""
+            c.execute("INSERT INTO trader_metadata (trader_id, name, nationality, profit, roi, level, badges) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      (trader["id"], trader["name"], trader["nationality"], profit, roi, level, badges))
 
-success_stories = Table(
-    "success_stories", metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("trader_name", String, unique=True),
-    Column("gender", String),
-    Column("story", String),
-    Column("image", String)
-)
+        # Initialize success_stories
+        for i, template in enumerate(SUCCESS_STORY_TEMPLATES, 1):
+            trader = random.choice(TRADERS)
+            gender = "male" if random.random() < 0.5 else "female"
+            deposit = random.randint(100, 5000)
+            profit = random.randint(1000, 20000)
+            symbol = random.choice([s["name"] for s in template["symbols"]])
+            image_url = template["image_url"].format(id=i)
+            c.execute("INSERT INTO success_stories (id, name, nationality, gender, deposit, profit, symbol, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                      (i, trader["name"], trader["nationality"], gender, deposit, profit, symbol, image_url))
 
-hall_of_fame = Table(
-    "hall_of_fame", metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("trader_name", String),
-    Column("profit", Float),
-    Column("scope", String),  # daily, weekly, monthly
-    Column("timestamp", DateTime)
-)
+        # Initialize hall of fame
+        for i in range(50):
+            trader = random.choice(TRADERS)
+            profit = random.randint(5000, 100000)
+            scope = random.choice(["daily", "weekly", "monthly"])
+            date = datetime.now() - timedelta(days=random.randint(1, 365))
+            c.execute("INSERT INTO hall_of_fame (name, nationality, profit, scope, date) VALUES (?, ?, ?, ?, ?)",
+                      (trader["name"], trader["nationality"], profit, scope, date))
 
-trader_metadata = Table(
-    "trader_metadata", metadata,
-    Column("trader_id", String, primary_key=True),
-    Column("country", String),
-    Column("win_streak", Integer, default=0),
-    Column("level", String, default="Rookie"),
-    Column("total_deposit", Float, default=0.0),
-    Column("total_profit", Float, default=0.0),
-    Column("achievements", String)
-)
+        conn.commit()
+    conn.close()
 
-metadata.create_all(engine)
+def update_trader_profit(trader_id, profit, roi):
+    try:
+        conn = sqlite3.connect("trading_bot.db")
+        c = conn.cursor()
+        c.execute("UPDATE trader_metadata SET profit = profit + ?, roi = ? WHERE trader_id = ?", (profit, roi, trader_id))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating trader profit: {e}")
+    finally:
+        conn.close()
 
-# -------------------------
-# SUCCESS STORIES
-# -------------------------
-def get_success_stories():
-    with engine.connect() as conn:
-        rows = conn.execute(success_stories.select()).fetchall()
-        stories = {"male": [], "female": []}
-        for row in rows:
-            stories[row.gender].append({
-                "name": row.trader_name,
-                "story": row.story,
-                "image": row.image
-            })
-        return stories
+def get_top_traders(limit=15, type="overall"):
+    try:
+        conn = sqlite3.connect("trading_bot.db")
+        c = conn.cursor()
+        if type == "overall":
+            c.execute("SELECT name, nationality, profit, level, badges FROM trader_metadata ORDER BY profit DESC LIMIT ?", (limit,))
+        elif type in ["stocks", "crypto", "meme"]:
+            c.execute("SELECT t.name, t.nationality, t.profit, t.level, t.badges FROM trader_metadata t JOIN success_stories s ON t.name = s.name WHERE s.symbol IN (SELECT symbol FROM success_stories WHERE symbol LIKE ? GROUP BY symbol ORDER BY SUM(profit) DESC) ORDER BY t.profit DESC LIMIT 10", (f"{type}%",))
+        elif type == "roi":
+            c.execute("SELECT name, nationality, profit, level, badges, roi FROM trader_metadata ORDER BY roi DESC LIMIT 10")
+        else:  # country
+            c.execute("SELECT name, nationality, profit, level, badges FROM trader_metadata WHERE nationality = ? ORDER BY profit DESC LIMIT 10", (type,))
+        traders = [{"name": row[0], "nationality": row[1], "profit": row[2], "level": row[3], "badges": row[4], "roi": row[5] if type == "roi" else None} for row in c.fetchall()]
+        conn.close()
+        return traders
+    except Exception as e:
+        logger.error(f"Error fetching top traders: {e}")
+        return []
 
-# -------------------------
-# INIT HELPERS
-# -------------------------
-def init_traders_if_needed():
-    with engine.begin() as conn:
-        existing = conn.execute(select(trader_metadata.c.trader_id)).fetchall()
-        if existing:
-            return
-        logger.info("Initializing trader metadata...")
-        for country, traders in COUNTRY_TRADERS.items():
-            for trader_id, name in traders:
-                conn.execute(insert(trader_metadata).values(
-                    trader_id=trader_id,
-                    country=country,
-                    win_streak=0,
-                    level="Rookie",
-                    total_deposit=0.0,
-                    total_profit=0.0,
-                    achievements=""
-                ))
+def get_rankings_cache(type):
+    try:
+        conn = sqlite3.connect("trading_bot.db")
+        c = conn.cursor()
+        c.execute("SELECT data, timestamp FROM rankings_cache WHERE type = ?", (type,))
+        result = c.fetchone()
+        conn.close()
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching rankings cache: {e}")
+        return None
 
-def initialize_posts():
-    with engine.begin() as conn:
-        existing = conn.execute(select(posts)).fetchall()
-        if existing:
-            return
-        for _ in range(200):
-            symbol = random.choice(STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS)
-            trader_id, _ = random.choice(RANKING_TRADERS)
-            deposit = random.randint(100, 40000)
-            profit = deposit * random.uniform(2, 8)
-            posted_at = datetime.now(timezone.utc) - timedelta(days=random.randint(1, 30))
-            conn.execute(insert(posts).values(
-                symbol=symbol,
-                content="Init post",
-                deposit=deposit,
-                profit=profit,
-                posted_at=posted_at,
-                trader_id=trader_id
-            ))
-            conn.execute(
-                update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(
-                    total_profit=trader_metadata.c.total_profit + profit,
-                    total_deposit=trader_metadata.c.total_deposit + deposit,
-                )
-            )
+def update_rankings_cache(type, data):
+    try:
+        conn = sqlite3.connect("trading_bot.db")
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO rankings_cache (type, data, timestamp) VALUES (?, ?, ?)", (type, data, datetime.now()))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating rankings cache: {e}")
+    finally:
+        conn.close()
 
-# -------------------------
-# RANKINGS + LEADERBOARDS
-# -------------------------
-def cache_rankings(scope, ranking_pairs):
-    now = datetime.now(timezone.utc)
-    with engine.begin() as conn:
-        conn.execute(delete(rankings_cache).where(rankings_cache.c.scope == scope))
-        conn.execute(insert(rankings_cache).values(
-            scope=scope,
-            content=json.dumps(ranking_pairs),
-            timestamp=now
-        ))
+def update_trending_ticker(symbol):
+    try:
+        conn = sqlite3.connect("trading_bot.db")
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO trending_tickers (symbol, count) VALUES (?, COALESCE((SELECT count + 1 FROM trending_tickers WHERE symbol = ?), 1))", (symbol, symbol))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating trending ticker: {e}")
+    finally:
+        conn.close()
 
-def fetch_cached_rankings(scope="overall"):
-    now = datetime.now(timezone.utc)
-    with engine.begin() as conn:
-        row = conn.execute(select(rankings_cache).where(rankings_cache.c.scope == scope)).fetchone()
-        old_names = []
-        if row:
-            ts = row.timestamp
-            if ts and (now - ts) < timedelta(hours=5):
-                rankings = json.loads(row.content)
-                old_names = [r["name"] for r in rankings]
-                return rankings, None
-
-        rankings = build_rankings_snapshot(scope)
-
-        # detect new entry
-        new_names = [r["name"] for r in rankings]
-        new_entry = None
-        if old_names:
-            for name in new_names[:20]:
-                if name not in old_names:
-                    new_entry = name
-                    break
-
-        cache_rankings(scope, rankings)
-        return rankings, new_entry
-
-def build_rankings_snapshot(scope="overall"):
-    with engine.connect() as conn:
-        if scope == "daily":
-            start = datetime.now(timezone.utc) - timedelta(days=1)
-            df = pd.read_sql(
-                "SELECT trader_id, SUM(profit) as total_profit FROM posts "
-                "WHERE posted_at >= :start GROUP BY trader_id ORDER BY total_profit DESC",
-                conn, params={"start": start}
-            )
-        elif scope == "weekly":
-            start = datetime.now(timezone.utc) - timedelta(days=7)
-            df = pd.read_sql(
-                "SELECT trader_id, SUM(profit) as total_profit FROM posts "
-                "WHERE posted_at >= :start GROUP BY trader_id ORDER BY total_profit DESC",
-                conn, params={"start": start}
-            )
-        elif scope == "monthly":
-            start = datetime.now(timezone.utc) - timedelta(days=30)
-            df = pd.read_sql(
-                "SELECT trader_id, SUM(profit) as total_profit FROM posts "
-                "WHERE posted_at >= :start GROUP BY trader_id ORDER BY total_profit DESC",
-                conn, params={"start": start}
-            )
-        else:
-            df = pd.read_sql(
-                "SELECT trader_id, total_profit FROM trader_metadata ORDER BY total_profit DESC",
-                conn
-            )
-    ranking_pairs = []
-    for row in df.itertuples():
-        name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
-        if name:
-            ranking_pairs.append({"name": name, "profit": row.total_profit})
-    ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
-    return ranking_pairs[:20]
-
-# -------------------------
-# AUTO INIT
-# -------------------------
-init_traders_if_needed()
-initialize_posts()
+def get_trending_tickers():
+    try:
+        conn = sqlite3.connect("trading_bot.db")
+        c = conn.cursor()
+        c.execute("SELECT symbol, count FROM trending_tickers WHERE count >= 3 ORDER BY count DESC LIMIT 4")
+        tickers = c.fetchall()
+        conn.close()
+        return tickers
+    except Exception as e:
+        logger.error(f"Error fetching trending tickers: {e}")
+        return []
