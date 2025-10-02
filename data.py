@@ -1,179 +1,242 @@
-import os
-from dotenv import load_dotenv
-
-# Load .env
-load_dotenv()
-
-# -----------------------
-# Environment Variables
-# -----------------------
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-STOCK_SYMBOLS = ["TSLA", "AAPL", "NVDA", "MSFT", "AMZN", "GOOGL", "META"]
-CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL"]
-MEME_COINS = ["NIKY"]
-ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
-
-WEBSITE_URL = "https://optionstradinguni.online/"
-
-# -----------------------
-# data.py
-
-# 🌍 Supported countries
-COUNTRIES = ["USA", "Nigeria", "UK", "India", "Germany"]
-
-# 🌍 Global trader list (id, display name)
-RANKING_TRADERS = [
-    # USA
-    ("JamesLopez", "James Lopez"),
-    ("RobertGarcia", "Robert Garcia"),
-    ("SophiaGonzalez", "Sophia Gonzalez"),
-    ("WilliamRodriguez", "William Rodriguez"),
-    ("OliviaHernandez", "Olivia Hernandez"),
-    ("MichaelBrown", "Michael Brown"),
-    ("DavidMiller", "David Miller"),
-    ("EmmaWhite", "Emma White"),
-    ("JosephTurner", "Joseph Turner"),
-    ("GraceAdams", "Grace Adams"),
-
-    # Nigeria
-    ("BenjaminScott", "Benjamin Scott"),
-    ("ChineduOkafor", "Chinedu Okafor"),
-    ("NgoziAdeyemi", "Ngozi Adeyemi"),
-    ("TundeBalogun", "Tunde Balogun"),
-    ("AmakaObi", "Amaka Obi"),
-    ("IbrahimLawal", "Ibrahim Lawal"),
-    ("FunkeOlawale", "Funke Olawale"),
-    ("VictorUche", "Victor Uche"),
-    ("AishaBello", "Aisha Bello"),
-    ("SamuelOkon", "Samuel Okon"),
-
-    # UK
-    ("CharlotteTorres", "Charlotte Torres"),
-    ("EllaWright", "Ella Wright"),
-    ("HenryAllen", "Henry Allen"),
-    ("ThomasClark", "Thomas Clark"),
-    ("DanielKing", "Daniel King"),
-    ("RebeccaMoore", "Rebecca Moore"),
-    ("OliverHughes", "Oliver Hughes"),
-    ("GeorgeHill", "George Hill"),
-    ("AmeliaScott", "Amelia Scott"),
-    ("ChloeYoung", "Chloe Young"),
-
-    # India
-    ("RaviKumar", "Ravi Kumar"),
-    ("PriyaSharma", "Priya Sharma"),
-    ("ArjunPatel", "Arjun Patel"),
-    ("AnanyaGupta", "Ananya Gupta"),
-    ("RohitVerma", "Rohit Verma"),
-    ("SanjaySingh", "Sanjay Singh"),
-    ("MeeraIyer", "Meera Iyer"),
-    ("VikramJoshi", "Vikram Joshi"),
-    ("SnehaReddy", "Sneha Reddy"),
-    ("KiranNair", "Kiran Nair"),
-
-    # Germany
-    ("LukasMeyer", "Lukas Meyer"),
-    ("HannahSchmidt", "Hannah Schmidt"),
-    ("JonasFischer", "Jonas Fischer"),
-    ("LeaWeber", "Lea Weber"),
-    ("FelixBecker", "Felix Becker"),
-    ("SophieWagner", "Sophie Wagner"),
-    ("MaxSchneider", "Max Schneider"),
-    ("MiaKoch", "Mia Koch"),
-    ("PaulNeumann", "Paul Neumann"),
-    ("ClaraHoffmann", "Clara Hoffmann"),
+SYMBOLS = [
+    {"name": "TSLA", "type": "stocks"},
+    {"name": "AAPL", "type": "stocks"},
+    {"name": "NVDA", "type": "stocks"},
+    {"name": "BTC", "type": "crypto"},
+    {"name": "ETH", "type": "crypto"},
+    {"name": "SOL", "type": "crypto"},
+    {"name": "NIKY", "type": "meme"},
+    {"name": "DOGE", "type": "meme"},
+    {"name": "PEPE", "type": "meme"}
 ]
 
-# 🌍 Country-to-trader mapping
-COUNTRY_TRADERS = {
-    "USA": [
-        "JamesLopez", "RobertGarcia", "SophiaGonzalez", "WilliamRodriguez",
-        "OliviaHernandez", "MichaelBrown", "DavidMiller", "EmmaWhite",
-        "JosephTurner", "GraceAdams"
-    ],
-    "Nigeria": [
-        "BenjaminScott", "ChineduOkafor", "NgoziAdeyemi", "TundeBalogun",
-        "AmakaObi", "IbrahimLawal", "FunkeOlawale", "VictorUche",
-        "AishaBello", "SamuelOkon"
-    ],
-    "UK": [
-        "CharlotteTorres", "EllaWright", "HenryAllen", "ThomasClark",
-        "DanielKing", "RebeccaMoore", "OliverHughes", "GeorgeHill",
-        "AmeliaScott", "ChloeYoung"
-    ],
-    "India": [
-        "RaviKumar", "PriyaSharma", "ArjunPatel", "AnanyaGupta",
-        "RohitVerma", "SanjaySingh", "MeeraIyer", "VikramJoshi",
-        "SnehaReddy", "KiranNair"
-    ],
-    "Germany": [
-        "LukasMeyer", "HannahSchmidt", "JonasFischer", "LeaWeber",
-        "FelixBecker", "SophieWagner", "MaxSchneider", "MiaKoch",
-        "PaulNeumann", "ClaraHoffmann"
-    ]
-}
+TRADERS = [
+    {"id": 1, "name": "Michael Thompson", "nationality": "USA"},
+    {"id": 2, "name": "Sarah Johnson", "nationality": "USA"},
+    {"id": 3, "name": "David Martinez", "nationality": "USA"},
+    {"id": 4, "name": "Emily Davis", "nationality": "USA"},
+    {"id": 5, "name": "Christopher Lee", "nationality": "USA"},
+    {"id": 6, "name": "Jennifer Brown", "nationality": "USA"},
+    {"id": 7, "name": "Matthew Wilson", "nationality": "USA"},
+    {"id": 8, "name": "Amanda Taylor", "nationality": "USA"},
+    {"id": 9, "name": "Robert Garcia", "nationality": "USA"},
+    {"id": 10, "name": "Jessica Moore", "nationality": "USA"},
+    {"id": 11, "name": "Daniel Clark", "nationality": "USA"},
+    {"id": 12, "name": "Lauren Walker", "nationality": "USA"},
+    {"id": 13, "name": "James Lewis", "nationality": "USA"},
+    {"id": 14, "name": "Ashley Hall", "nationality": "USA"},
+    {"id": 15, "name": "William Young", "nationality": "USA"},
+    {"id": 16, "name": "Megan King", "nationality": "USA"},
+    {"id": 17, "name": "Thomas Wright", "nationality": "USA"},
+    {"id": 18, "name": "Nicole Scott", "nationality": "USA"},
+    {"id": 19, "name": "Steven Adams", "nationality": "USA"},
+    {"id": 20, "name": "Rachel Green", "nationality": "USA"},
+    {"id": 21, "name": "Chinedu Okeke", "nationality": "Nigeria"},
+    {"id": 22, "name": "Aisha Bello", "nationality": "Nigeria"},
+    {"id": 23, "name": "Olumide Adebayo", "nationality": "Nigeria"},
+    {"id": 24, "name": "Fatima Yusuf", "nationality": "Nigeria"},
+    {"id": 25, "name": "Emeka Nwosu", "nationality": "Nigeria"},
+    {"id": 26, "name": "Chioma Eze", "nationality": "Nigeria"},
+    {"id": 27, "name": "Tunde Lawal", "nationality": "Nigeria"},
+    {"id": 28, "name": "Ngozi Obi", "nationality": "Nigeria"},
+    {"id": 29, "name": "Ibrahim Musa", "nationality": "Nigeria"},
+    {"id": 30, "name": "Adaeze Okoro", "nationality": "Nigeria"},
+    {"id": 31, "name": "Segun Adeyemi", "nationality": "Nigeria"},
+    {"id": 32, "name": "Funmi Okafor", "nationality": "Nigeria"},
+    {"id": 33, "name": "Kelechi Ibeh", "nationality": "Nigeria"},
+    {"id": 34, "name": "Zainab Ibrahim", "nationality": "Nigeria"},
+    {"id": 35, "name": "Uchechukwu Nnamdi", "nationality": "Nigeria"},
+    {"id": 36, "name": "Ifeoma Anike", "nationality": "Nigeria"},
+    {"id": 37, "name": "Musa Danjuma", "nationality": "Nigeria"},
+    {"id": 38, "name": "Amaka Udeh", "nationality": "Nigeria"},
+    {"id": 39, "name": "Yusuf Abubakar", "nationality": "Nigeria"},
+    {"id": 40, "name": "Nneka Okonkwo", "nationality": "Nigeria"},
+    {"id": 41, "name": "João Silva", "nationality": "Brazil"},
+    {"id": 42, "name": "Ana Costa", "nationality": "Brazil"},
+    {"id": 43, "name": "Pedro Santos", "nationality": "Brazil"},
+    {"id": 44, "name": "Maria Oliveira", "nationality": "Brazil"},
+    {"id": 45, "name": "Lucas Ferreira", "nationality": "Brazil"},
+    {"id": 46, "name": "Juliana Almeida", "nationality": "Brazil"},
+    {"id": 47, "name": "Gabriel Pereira", "nationality": "Brazil"},
+    {"id": 48, "name": "Fernanda Lima", "nationality": "Brazil"},
+    {"id": 49, "name": "Rafael Souza", "nationality": "Brazil"},
+    {"id": 50, "name": "Camila Ribeiro", "nationality": "Brazil"},
+    {"id": 51, "name": "Diego Barbosa", "nationality": "Brazil"},
+    {"id": 52, "name": "Letícia Mendes", "nationality": "Brazil"},
+    {"id": 53, "name": "Bruno Carvalho", "nationality": "Brazil"},
+    {"id": 54, "name": "Isabela Rocha", "nationality": "Brazil"},
+    {"id": 55, "name": "Thiago Gomes", "nationality": "Brazil"},
+    {"id": 56, "name": "Larissa Dias", "nationality": "Brazil"},
+    {"id": 57, "name": "Vinicius Correia", "nationality": "Brazil"},
+    {"id": 58, "name": "Beatriz Castro", "nationality": "Brazil"},
+    {"id": 59, "name": "André Monteiro", "nationality": "Brazil"},
+    {"id": 60, "name": "Sofia Nascimento", "nationality": "Brazil"},
+    {"id": 61, "name": "Anna Müller", "nationality": "Germany"},
+    {"id": 62, "name": "Lukas Schmidt", "nationality": "Germany"},
+    {"id": 63, "name": "Sophie Wagner", "nationality": "Germany"},
+    {"id": 64, "name": "Jonas Fischer", "nationality": "Germany"},
+    {"id": 65, "name": "Emma Schneider", "nationality": "Germany"},
+    {"id": 66, "name": "Max Weber", "nationality": "Germany"},
+    {"id": 67, "name": "Laura Meyer", "nationality": "Germany"},
+    {"id": 68, "name": "Felix Becker", "nationality": "Germany"},
+    {"id": 69, "name": "Mia Hoffmann", "nationality": "Germany"},
+    {"id": 70, "name": "Leon Schulz", "nationality": "Germany"},
+    {"id": 71, "name": "Julia Koch", "nationality": "Germany"},
+    {"id": 72, "name": "Tim Braun", "nationality": "Germany"},
+    {"id": 73, "name": "Lena Richter", "nationality": "Germany"},
+    {"id": 74, "name": "Paul Klein", "nationality": "Germany"},
+    {"id": 75, "name": "Sarah Lehmann", "nationality": "Germany"},
+    {"id": 76, "name": "David Schwarz", "nationality": "Germany"},
+    {"id": 77, "name": "Marie Wolf", "nationality": "Germany"},
+    {"id": 78, "name": "Niklas Krüger", "nationality": "Germany"},
+    {"id": 79, "name": "Lisa Vogel", "nationality": "Germany"},
+    {"id": 80, "name": "Florian Stein", "nationality": "Germany"},
+    {"id": 81, "name": "Hiroshi Tanaka", "nationality": "Japan"},
+    {"id": 82, "name": "Yumi Sato", "nationality": "Japan"},
+    {"id": 83, "name": "Kenji Yamada", "nationality": "Japan"},
+    {"id": 84, "name": "Aiko Nakamura", "nationality": "Japan"},
+    {"id": 85, "name": "Takashi Suzuki", "nationality": "Japan"},
+    {"id": 86, "name": "Haruka Takahashi", "nationality": "Japan"},
+    {"id": 87, "name": "Daichi Ito", "nationality": "Japan"},
+    {"id": 88, "name": "Sakura Kobayashi", "nationality": "Japan"},
+    {"id": 89, "name": "Ryo Watanabe", "nationality": "Japan"},
+    {"id": 90, "name": "Ayaka Hayashi", "nationality": "Japan"},
+    {"id": 91, "name": "Taro Yamamoto", "nationality": "Japan"},
+    {"id": 92, "name": "Miku Endo", "nationality": "Japan"},
+    {"id": 93, "name": "Shota Mori", "nationality": "Japan"},
+    {"id": 94, "name": "Nanami Inoue", "nationality": "Japan"},
+    {"id": 95, "name": "Kenta Ishida", "nationality": "Japan"},
+    {"id": 96, "name": "Rika Fujimoto", "nationality": "Japan"},
+    {"id": 97, "name": "Yuto Nakajima", "nationality": "Japan"},
+    {"id": 98, "name": "Hina Ogawa", "nationality": "Japan"},
+    {"id": 99, "name": "Kazuki Shimizu", "nationality": "Japan"},
+    {"id": 100, "name": "Asuka Kondo", "nationality": "Japan"},
+    {"id": 101, "name": "Priya Sharma", "nationality": "India"},
+    {"id": 102, "name": "Arjun Patel", "nationality": "India"},
+    {"id": 103, "name": "Ananya Gupta", "nationality": "India"},
+    {"id": 104, "name": "Vikram Singh", "nationality": "India"},
+    {"id": 105, "name": "Neha Verma", "nationality": "India"},
+    {"id": 106, "name": "Rohan Kumar", "nationality": "India"},
+    {"id": 107, "name": "Aisha Khan", "nationality": "India"},
+    {"id": 108, "name": "Aditya Joshi", "nationality": "India"},
+    {"id": 109, "name": "Divya Reddy", "nationality": "India"},
+    {"id": 110, "name": "Rahul Desai", "nationality": "India"},
+    {"id": 111, "name": "Meera Nair", "nationality": "India"},
+    {"id": 112, "name": "Siddharth Malhotra", "nationality": "India"},
+    {"id": 113, "name": "Pooja Chopra", "nationality": "India"},
+    {"id": 114, "name": "Aman Yadav", "nationality": "India"},
+    {"id": 115, "name": "Sneha Iyer", "nationality": "India"},
+    {"id": 116, "name": "Kartik Shah", "nationality": "India"},
+    {"id": 117, "name": "Riya Menon", "nationality": "India"},
+    {"id": 118, "name": "Vivek Rao", "nationality": "India"},
+    {"id": 119, "name": "Kavita Thakur", "nationality": "India"},
+    {"id": 120, "name": "Nikhil Jain", "nationality": "India"},
+    {"id": 121, "name": "James Wilson", "nationality": "UK"},
+    {"id": 122, "name": "Emma Taylor", "nationality": "UK"},
+    {"id": 123, "name": "Oliver Harris", "nationality": "UK"},
+    {"id": 124, "name": "Sophie Clark", "nationality": "UK"},
+    {"id": 125, "name": "Harry Lewis", "nationality": "UK"},
+    {"id": 126, "name": "Chloe Walker", "nationality": "UK"},
+    {"id": 127, "name": "Jack Turner", "nationality": "UK"},
+    {"id": 128, "name": "Amelia Brown", "nationality": "UK"},
+    {"id": 129, "name": "Thomas Davies", "nationality": "UK"},
+    {"id": 130, "name": "Isabella Evans", "nationality": "UK"},
+    {"id": 131, "name": "George Wright", "nationality": "UK"},
+    {"id": 132, "name": "Lily Adams", "nationality": "UK"},
+    {"id": 133, "name": "Charlie Moore", "nationality": "UK"},
+    {"id": 134, "name": "Ava Scott", "nationality": "UK"},
+    {"id": 135, "name": "William Green", "nationality": "UK"},
+    {"id": 136, "name": "Mia Hall", "nationality": "UK"},
+    {"id": 137, "name": "Henry King", "nationality": "UK"},
+    {"id": 138, "name": "Grace Phillips", "nationality": "UK"},
+    {"id": 139, "name": "Alfie Roberts", "nationality": "UK"},
+    {"id": 140, "name": "Freya Stewart", "nationality": "UK"},
+    {"id": 141, "name": "Sophie Dubois", "nationality": "France"},
+    {"id": 142, "name": "Lucas Martin", "nationality": "France"},
+    {"id": 143, "name": "Emma Lefèvre", "nationality": "France"},
+    {"id": 144, "name": "Hugo Durand", "nationality": "France"},
+    {"id": 145, "name": "Chloé Bernard", "nationality": "France"},
+    {"id": 146, "name": "Louis Moreau", "nationality": "France"},
+    {"id": 147, "name": "Camille Laurent", "nationality": "France"},
+    {"id": 148, "name": "Théo Roux", "nationality": "France"},
+    {"id": 149, "name": "Manon Fournier", "nationality": "France"},
+    {"id": 150, "name": "Julien Petit", "nationality": "France"},
+    {"id": 151, "name": "Léa Simon", "nationality": "France"},
+    {"id": 152, "name": "Antoine Girard", "nationality": "France"},
+    {"id": 153, "name": "Zoé Lemoine", "nationality": "France"},
+    {"id": 154, "name": "Nathan Dubois", "nationality": "France"},
+    {"id": 155, "name": "Clara Michel", "nationality": "France"},
+    {"id": 156, "name": "Raphaël Faure", "nationality": "France"},
+    {"id": 157, "name": "Inès Gauthier", "nationality": "France"},
+    {"id": 158, "name": "Victor Colin", "nationality": "France"},
+    {"id": 159, "name": "Amélie Roy", "nationality": "France"},
+    {"id": 160, "name": "Gabriel Marchand", "nationality": "France"},
+    {"id": 161, "name": "Wei Chen", "nationality": "China"},
+    {"id": 162, "name": "Li Mei", "nationality": "China"},
+    {"id": 163, "name": "Zhang Wei", "nationality": "China"},
+    {"id": 164, "name": "Wang Jing", "nationality": "China"},
+    {"id": 165, "name": "Liu Yang", "nationality": "China"},
+    {"id": 166, "name": "Chen Xi", "nationality": "China"},
+    {"id": 167, "name": "Zhao Lei", "nationality": "China"},
+    {"id": 168, "name": "Sun Xia", "nationality": "China"},
+    {"id": 169, "name": "Huang Tao", "nationality": "China"},
+    {"id": 170, "name": "Zhou Min", "nationality": "China"},
+    {"id": 171, "name": "Xu Hao", "nationality": "China"},
+    {"id": 172, "name": "Yang Lin", "nationality": "China"},
+    {"id": 173, "name": "Ma Qiang", "nationality": "China"},
+    {"id": 174, "name": "Wu Jing", "nationality": "China"},
+    {"id": 175, "name": "Li Na", "nationality": "China"},
+    {"id": 176, "name": "Zheng Kai", "nationality": "China"},
+    {"id": 177, "name": "Guo Rui", "nationality": "China"},
+    {"id": 178, "name": "Tang Wei", "nationality": "China"},
+    {"id": 179, "name": "Jin Hao", "nationality": "China"},
+    {"id": 180, "name": "Hu Fang", "nationality": "China"},
+    {"id": 181, "name": "Dmitry Ivanov", "nationality": "Russia"},
+    {"id": 182, "name": "Anna Petrova", "nationality": "Russia"},
+    {"id": 183, "name": "Ivan Sokolov", "nationality": "Russia"},
+    {"id": 184, "name": "Maria Smirnova", "nationality": "Russia"},
+    {"id": 185, "name": "Alexei Kuznetsov", "nationality": "Russia"},
+    {"id": 186, "name": "Ekaterina Morozova", "nationality": "Russia"},
+    {"id": 187, "name": "Sergey Volkov", "nationality": "Russia"},
+    {"id": 188, "name": "Olga Novikova", "nationality": "Russia"},
+    {"id": 189, "name": "Mikhail Popov", "nationality": "Russia"},
+    {"id": 190, "name": "Natalia Romanova", "nationality": "Russia"},
+    {"id": 191, "name": "Vladimir Petrov", "nationality": "Russia"},
+    {"id": 192, "name": "Yulia Sidorova", "nationality": "Russia"},
+    {"id": 193, "name": "Andrei Vasiliev", "nationality": "Russia"},
+    {"id": 194, "name": "Svetlana Koroleva", "nationality": "Russia"},
+    {"id": 195, "name": "Igor Lebedev", "nationality": "Russia"},
+    {"id": 196, "name": "Elena Makarova", "nationality": "Russia"},
+    {"id": 197, "name": "Victor Orlov", "nationality": "Russia"},
+    {"id": 198, "name": "Irina Zaitseva", "nationality": "Russia"},
+    {"id": 199, "name": "Pavel Frolov", "nationality": "Russia"},
+    {"id": 200, "name": "Daria Egorova", "nationality": "Russia"}
+]
 
-# 🌐 Website URL
-WEBSITE_URL = "https://optionstradinguni.online/"
-
-# Flattened list (all traders, still useful in leaderboards/rankings)
-RANKING_TRADERS = [trader for country, traders in COUNTRY_TRADERS.items() for trader in traders]
-SUCCESS_TRADERS = {
-    "male": [
-        ("JohnDoeTrader", "John Doe", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male1.jpeg"),
-        ("AlexJohnson", "Alex Johnson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male2.jpeg"),
-        ("MichaelBrown", "Michael Brown", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male3.jpeg"),
-        ("DavidMiller", "David Miller", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male4.jpeg"),
-        ("ChrisAnderson", "Chris Anderson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male5.jpeg"),
-    ],
-    "female": [
-        ("JaneSmithPro", "Jane Smith", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female1.jpeg"),
-        ("EmilyDavis", "Emily Davis", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female2.jpeg"),
-        ("SarahWilson", "Sarah Wilson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female3.jpeg"),
-        ("LauraTaylor", "Laura Taylor", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female4.jpeg"),
-        ("AnnaMartinez", "Anna Martinez", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female5.jpeg"),
-    ],
-}
-
-SUCCESS_STORY_TEMPLATES = {
-    "male": [
-        "transformed a modest ${deposit} investment into an impressive ${profit} through a meticulously planned swing trade on AAPL.",
-        "turned ${deposit} into a remarkable ${profit} by mastering the art of BTC HODL.",
-        "flipped a ${deposit} stake into ${profit} with a bold NIKY pump riding move.",
-        "achieved a stunning ${profit} profit from a strategic ETH DCA plan starting with ${deposit}.",
-        "earned ${profit} through a clever SOL arbitrage play after investing ${deposit}.",
-    ],
-    "female": [
-        "grew a ${deposit} investment into ${profit} with a disciplined TSLA scalping strategy.",
-        "boosted ${deposit} into ${profit} with an early sniping move on DOGE.",
-        "turned ${deposit} into ${profit} via a SHIB community flip.",
-        "made ${profit} from a NVDA position trade starting with ${deposit}.",
-        "grew ${deposit} into ${profit} with a GOOGL day trading plan.",
-    ],
-}
-
-NEWS_CATALYSTS = {
-    "stocks": [
-        "surged after strong earnings",
-        "climbed on analyst upgrade",
-        "rallied on new product launch",
-        "gained on partnership news",
-        "spiked with positive sentiment",
-    ],
-    "crypto": [
-        "pumped after whale accumulation",
-        "rose on adoption news",
-        "surged on protocol upgrade",
-        "gained after exchange listing",
-        "spiked with DeFi integration",
-    ],
-    "meme_coins": [
-        "mooned after viral tweet",
-        "pumped on community hype",
-        "surged with influencer shoutout",
-        "rocketed after Reddit buzz",
-        "spiked on meme-driven volume",
-    ],
-}
+SUCCESS_STORY_TEMPLATES = [
+    {
+        "id": 1,
+        "symbols": [{"name": "TSLA", "type": "stocks"}, {"name": "AAPL", "type": "stocks"}, {"name": "NVDA", "type": "stocks"}],
+        "image_url": "https://raw.githubusercontent.com/username/repo/main/images/trader{id}.jpg"
+    },
+    {
+        "id": 2,
+        "symbols": [{"name": "BTC", "type": "crypto"}, {"name": "ETH", "type": "crypto"}, {"name": "SOL", "type": "crypto"}],
+        "image_url": "https://raw.githubusercontent.com/username/repo/main/images/trader{id}.jpg"
+    },
+    {
+        "id": 3,
+        "symbols": [{"name": "NIKY", "type": "meme"}, {"name": "DOGE", "type": "meme"}, {"name": "PEPE", "type": "meme"}],
+        "image_url": "https://raw.githubusercontent.com/username/repo/main/images/trader{id}.jpg"
+    },
+    {
+        "id": 4,
+        "symbols": [{"name": "ETH", "type": "crypto"}, {"name": "SOL", "type": "crypto"}, {"name": "BTC", "type": "crypto"}],
+        "image_url": "https://raw.githubusercontent.com/username/repo/main/images/trader{id}.jpg"
+    },
+    {
+        "id": 5,
+        "symbols": [{"name": "DOGE", "type": "meme"}, {"name": "PEPE", "type": "meme"}, {"name": "NIKY", "type": "meme"}],
+        "image_url": "https://raw.githubusercontent.com/username/repo/main/images/trader{id}.jpg"
+    }
+]
