@@ -808,7 +808,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Why join us?\n"
         f"- 💸 Real trades with 2x–8x on Stocks/Crypto\n"
         f"- 🚀 Meme Coin Moonshots up to 100x\n"
-        f"- 🌍 Country leaderboards + global rankings\n"
         f"- 📖 Inspiring success stories\n\n"
         f"Start your journey to financial growth today!"
     )
