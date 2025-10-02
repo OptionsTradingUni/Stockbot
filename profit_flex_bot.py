@@ -753,13 +753,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     random_index = random.randint(0, total_stories - 1)
 
     keyboard = [
-    [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-     InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
-    [InlineKeyboardButton("📢 Join Profit Group", url="https://t.me/+v2cZ4q1DXNdkMjI8")],
-    [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
-     InlineKeyboardButton("Terms of Service", callback_data="terms")],
-    [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
-]
+        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
+         InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
+        [InlineKeyboardButton("📢 Join Profit Group", url="https://t.me/+v2cZ4q1DXNdkMjI8")],
+        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
+         InlineKeyboardButton("Terms of Service", callback_data="terms")],
+        [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     welcome_text = (
@@ -773,6 +773,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"- Exclusive insights on stocks, crypto, and meme coins.\n\n"
         f"Start your journey to financial growth today!"
     )
+
     await context.bot.send_message(
         chat_id=chat_id,
         text=welcome_text,
@@ -780,19 +781,20 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+    # ✅ Safely add user to DB
     try:
-    with engine.begin() as conn:
-        stmt = users.insert().prefix_with("OR IGNORE").values(
-            user_id=str(user.id),
-            username=user.username or "unknown",
-            display_name=name,
-            wins=0,
-            total_trades=0,
-            total_profit=0
-        )
-        conn.execute(stmt)
-except Exception as e:
-    logger.error(f"Error adding user {user.id}: {e}")
+        with engine.begin() as conn:
+            stmt = users.insert().prefix_with("OR IGNORE").values(
+                user_id=str(user.id),
+                username=user.username or "unknown",
+                display_name=name,
+                wins=0,
+                total_trades=0,
+                total_profit=0
+            )
+            conn.execute(stmt)
+    except Exception as e:
+        logger.error(f"Error adding user {user.id}: {e}")
 # Callback handler for inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
