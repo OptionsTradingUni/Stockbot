@@ -3,7 +3,7 @@ import random
 import asyncio
 import logging
 import json
-from sqlalchemy import select, delete, insert, update
+from sqlalchemy import select, delete, insert, update, text, inspect
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import pandas as pd
@@ -159,6 +159,16 @@ trending_tickers = Table(
 
 metadata.create_all(engine)
 
+# Migrate users table to add missing columns if necessary
+inspector = inspect(engine)
+user_columns = [col['name'] for col in inspector.get_columns('users')]
+if 'last_login' not in user_columns:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN last_login DATETIME"))
+if 'login_streak' not in user_columns:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN login_streak INTEGER DEFAULT 0"))
+
 # Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
 
@@ -287,15 +297,17 @@ def initialize_trader_metadata():
 
         logger.info("Initializing trader metadata...")
         for trader_id, trader_name in RANKING_TRADERS:
+            total_profit = random.randint(2000, 30000) // 50 * 50
             conn.execute(trader_metadata.insert().values(
                 trader_id=trader_id,
                 country=random.choice(COUNTRIES),
                 win_streak=0,
                 level="Rookie",
                 total_deposit=0.0,
-                total_profit=0.0,
+                total_profit=total_profit,
                 achievements=""
             ))
+            update_trader_level(trader_id, total_profit)
 
 TRADER_STORIES = initialize_stories()
 RANKING_TRADERS = [
@@ -546,24 +558,18 @@ def assign_badge(name, profit, deposit=1000, win_streak=0):
     return random.choice(badges) if badges else ""
 
 def build_rankings_snapshot(scope="overall"):
-    take = min(20, len(RANKING_TRADERS))
-    selected = random.sample(RANKING_TRADERS, take)
-    profits = set()
+    with engine.connect() as conn:
+        df = pd.read_sql(
+            select(trader_metadata.c.trader_id, trader_metadata.c.total_profit),
+            conn
+        )
     ranking_pairs = []
-
-    for trader_id, name in selected:
-        val = random.randint(2000, 30000) // 50 * 50
-        while val in profits:
-            val = random.randint(2000, 30000) // 50 * 50
-        profits.add(val)
-        with engine.begin() as conn:
-            conn.execute(
-                update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(total_profit=val)
-            )
-        ranking_pairs.append({"name": name, "profit": val})
-
+    for row in df.itertuples():
+        name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
+        if name:
+            ranking_pairs.append({"name": name, "profit": row.total_profit})
     ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
-    return ranking_pairs
+    return ranking_pairs[:20]
 
 def build_asset_leaderboard(asset_type):
     symbols = MEME_COINS if asset_type == "meme" else CRYPTO_SYMBOLS if asset_type == "crypto" else STOCK_SYMBOLS
@@ -576,10 +582,11 @@ def build_asset_leaderboard(asset_type):
     lines = []
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     for i, row in enumerate(df.itertuples(), 1):
-        name = next(n for id, n in RANKING_TRADERS if id == row.trader_id)
-        badge = medals.get(i, f"{i}.")
-        roi = round((row.total_profit / row.total_deposit) * 100, 1) if row.total_deposit > 0 else 0
-        lines.append(f"{badge} <b>{name}</b> — ${row.total_profit:,} profit (ROI: {roi}%)")
+        name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
+        if name:
+            badge = medals.get(i, f"{i}.")
+            roi = round((row.total_profit / row.total_deposit) * 100, 1) if row.total_deposit > 0 else 0
+            lines.append(f"{badge} {name} — ${row.total_profit:,} profit (ROI: {roi}%)")
     return lines
 
 def build_country_leaderboard(country):
@@ -592,9 +599,10 @@ def build_country_leaderboard(country):
     lines = []
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     for i, row in enumerate(df.itertuples(), 1):
-        name = next(n for id, n in RANKING_TRADERS if id == row.trader_id)
-        badge = medals.get(i, f"{i}.")
-        lines.append(f"{badge} <b>{name}</b> — ${row.total_profit:,} profit")
+        name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
+        if name:
+            badge = medals.get(i, f"{i}.")
+            lines.append(f"{badge} {name} — ${row.total_profit:,} profit")
     return lines
 
 def build_roi_leaderboard():
@@ -607,10 +615,11 @@ def build_roi_leaderboard():
     lines = []
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     for i, row in enumerate(df.itertuples(), 1):
-        name = next(n for id, n in RANKING_TRADERS if id == row.trader_id)
-        roi = round((row.total_profit / row.total_deposit) * 100, 1)
-        badge = medals.get(i, f"{i}.")
-        lines.append(f"{badge} <b>{name}</b> — {roi}% ROI (${row.total_profit:,} profit)")
+        name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
+        if name:
+            roi = round((row.total_profit / row.total_deposit) * 100, 1)
+            badge = medals.get(i, f"{i}.")
+            lines.append(f"{badge} {name} — {roi}% ROI (${row.total_profit:,} profit)")
     return lines
 
 async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope="overall"):
@@ -652,7 +661,7 @@ async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope=
                 if app:
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
-                        text=f"🔥 BREAKING: <b>{new_name}</b> entered Top 20 with ${new_profit:,} profit!",
+                        text=f"🔥 BREAKING: {new_name} entered Top 20 with ${new_profit:,} profit!",
                         parse_mode=constants.ParseMode.HTML
                     )
             except Exception as e:
@@ -662,20 +671,18 @@ async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope=
         lines = []
         for i, entry in enumerate(ranking_pairs, start=1):
             name, total = entry["name"], entry["profit"]
-            try:
-                trader_id = next(id for id, n in RANKING_TRADERS if n == name)
-            except StopIteration:
-                trader_id = f"user_{name}"  # Handle user names not in RANKING_TRADERS
-            with engine.connect() as conn:
-                trader_data = conn.execute(
-                    select(trader_metadata.c.level, trader_metadata.c.win_streak, trader_metadata.c.country)
-                    .where(trader_metadata.c.trader_id == trader_id)
-                ).fetchone() or ("Rookie", 0, "Unknown")
-            level, win_streak, country = trader_data
-            badge = medals.get(i, f"{i}.")
-            extra = assign_badge(name, total, win_streak=win_streak)
-            badge_text = f" {extra} ({level}, {country})" if extra else f" ({level}, {country})"
-            lines.append(f"{badge} <b>{name}</b> — ${total:,} profit{badge_text}")
+            trader_id = next((id for id, n in RANKING_TRADERS if n == name), None)
+            if trader_id:
+                with engine.connect() as conn:
+                    trader_data = conn.execute(
+                        select(trader_metadata.c.level, trader_metadata.c.win_streak, trader_metadata.c.country)
+                        .where(trader_metadata.c.trader_id == trader_id)
+                    ).fetchone() or ("Rookie", 0, "Unknown")
+                level, win_streak, country = trader_data
+                badge = medals.get(i, f"{i}.")
+                extra = assign_badge(name, total, win_streak=win_streak)
+                badge_text = f" {extra} ({level}, {country})" if extra else f" ({level}, {country})"
+                lines.append(f"{badge} {name} — ${total:,} profit{badge_text}")
         return lines
 
 async def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style, is_loss, social_lines=None):
@@ -698,8 +705,8 @@ async def craft_profit_message(symbol, deposit, profit, percentage_gain, reason,
     streak_text = f"\n🔥 {trader_name} is on a {streak}-trade win streak!" if streak >= 3 and not is_loss else ""
 
     msg = (
-        f"{'📉' if is_loss else '📈'} <b>{symbol} {'Loss' if is_loss else 'Profit'} Update</b> {'😱' if is_loss else '📈'}\n"
-        f"<b>{trading_style}</b> on {asset_desc}\n"
+        f"{'📉' if is_loss else '📈'} {symbol} {'Loss' if is_loss else 'Profit'} Update {'😱' if is_loss else '📈'}\n"
+        f"{trading_style} on {asset_desc}\n"
         f"💰 Invested: ${deposit:,.2f}\n"
         f"{'📉' if is_loss else '🎯'} {multiplier}x Return → {'Loss' if is_loss else 'Realized'}: ${abs(profit):,.2f}\n"
         f"{'🚨' if is_loss else '🔥'} {reason}\n"
@@ -744,7 +751,7 @@ async def craft_trade_status():
     greed_fear = random.randint(0, 100)
     mood = "🐂 Bullish" if greed_fear > 60 else "🐻 Bearish" if greed_fear < 40 else "🟡 Neutral"
     return (
-        f"🏆 <b>Top Trader Rankings</b> 🏆\n"
+        f"🏆 Top Trader Rankings 🏆\n"
         f"As of {ts}:\n"
         f"{'\n'.join(social_lines)}\n\n"
         f"📊 Market Mood: {mood} (Greed/Fear: {greed_fear}/100)\n"
@@ -764,7 +771,7 @@ def craft_market_recap():
     )
     top_symbol = top_symbol.iloc[0]["symbol"] if not top_symbol.empty else random.choice(ALL_SYMBOLS)
     return (
-        f"📊 <b>Daily Market Recap</b> 📊\n"
+        f"📊 Daily Market Recap 📊\n"
         f"As of {ts}:\n"
         f"🔥 Top Asset: {top_symbol} dominated with the most trades!\n"
         f"Join Options Trading University to catch the next wave! #MarketRecap"
@@ -781,7 +788,7 @@ def craft_trending_ticker_alert():
     symbol, count = df.iloc[0]["symbol"], df.iloc[0]["count"]
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return (
-        f"🚨 <b>Trending Ticker Alert</b> 🚨\n"
+        f"🚨 Trending Ticker Alert 🚨\n"
         f"{symbol} appeared {count} times today!\n"
         f"Time: {ts}\n"
         f"Jump in at Options Trading University! #TrendingTicker"
@@ -822,12 +829,12 @@ def log_post(symbol, content, deposit, profit, user_id=None, trader_id=None):
         logger.error(f"Database error: {e}")
 
 async def announce_winner(scope, app):
-    lines = fetch_cached_rankings(scope=scope)
+    lines = await fetch_cached_rankings(scope=scope)
     if not lines:
         return
 
     winner_line = lines[0]
-    winner_name = winner_line.split("—")[0].split()[-1].strip("</b>")
+    winner_name = winner_line.split("—")[0].split()[-1].strip("")
     winner_profit = int("".join([c for c in winner_line.split("—")[1] if c.isdigit()]))
 
     with engine.begin() as conn:
@@ -841,8 +848,8 @@ async def announce_winner(scope, app):
         )
 
     msg = (
-        f"🔥 <b>{scope.capitalize()} Winner!</b> 🏆\n"
-        f"👑 <b>{winner_name}</b> secured ${winner_profit:,} profit!\n"
+        f"🔥 {scope.capitalize()} Winner! 🏆\n"
+        f"👑 {winner_name} secured ${winner_profit:,} profit!\n"
         f"Join the rankings at Options Trading University! #Winner"
     )
 
@@ -888,7 +895,7 @@ async def profit_posting_loop(app):
                 if profit > 10000 and not is_loss:
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
-                        text=f"🌟 <b>Trade of the Day!</b> 🌟\n{trader_name} made ${profit:,} on {symbol}!\nJoin Options Trading University! #TradeOfTheDay",
+                        text=f"🌟 Trade of the Day! 🌟\n{trader_name} made ${profit:,} on {symbol}!\nJoin Options Trading University! #TradeOfTheDay",
                         parse_mode=constants.ParseMode.HTML
                     )
 
@@ -898,7 +905,7 @@ async def profit_posting_loop(app):
             await asyncio.sleep(RATE_LIMIT_SECONDS)
 
             if random.random() < 0.2:
-                status_msg, status_reply_markup = craft_trade_status()
+                status_msg, status_reply_markup = await craft_trade_status()
                 try:
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
@@ -930,6 +937,16 @@ async def profit_posting_loop(app):
                         parse_mode=constants.ParseMode.HTML,
                         reply_markup=trend_reply_markup
                     )
+
+            if random.random() < 0.05:
+                poll_question = "Which asset will pump next?"
+                options = random.sample(ALL_SYMBOLS, 4)
+                await app.bot.send_poll(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    question=poll_question,
+                    options=options,
+                    is_anonymous=False
+                )
 
             if random.random() < 0.05:
                 await announce_winner("daily", app)
@@ -1061,18 +1078,17 @@ async def simulate_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     log_post(symbol, f"Simulated trade for {user.first_name}", deposit, profit, user_id=str(user.id))
     
-    if profit > 0:
-        await fetch_cached_rankings(new_name=user.first_name or user.username, new_profit=profit, app=context.application)
+    # Removed adding to rankings
     
     msg = (
-        f"💸 <b>Simulated Trade for {user.first_name}</b>\n"
+        f"💸 Simulated Trade for {user.first_name}\n"
         f"Symbol: {symbol}\n"
         f"Deposit: ${deposit:,.2f}\n"
         f"{'Loss' if is_loss else 'Profit'}: ${abs(profit):,.2f}\n"
         f"ROI: {abs(percentage_gain)}%{' Loss' if is_loss else ''}\n"
         f"Style: {trading_style}\n\n"
         f"{reason}\n\n"
-        f"Check your ranking with /trade_status!"
+        f"Check rankings with /trade_status!"
     )
     await context.bot.send_message(
         chat_id=chat_id,
@@ -1087,19 +1103,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
 
-    async def send_private_or_alert(message, reply_markup=None):
+    async def send_private_or_alert(message, reply_markup=None, photo=None, caption=None):
         try:
-            await context.bot.send_message(
-                chat_id=user.id,
-                text=message,
-                parse_mode=constants.ParseMode.HTML,
-                reply_markup=reply_markup
-            )
+            await query.message.delete()
+            if photo:
+                await context.bot.send_photo(
+                    chat_id=user.id,
+                    photo=photo,
+                    caption=caption,
+                    parse_mode=constants.ParseMode.HTML,
+                    reply_markup=reply_markup
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=user.id,
+                    text=message,
+                    parse_mode=constants.ParseMode.HTML,
+                    reply_markup=reply_markup
+                )
         except Exception:
             await query.answer("⚠️ Start the bot privately with /start to access features.", show_alert=True)
 
     if data == "rankings":
-        status_msg, status_reply_markup = craft_trade_status()
+        status_msg, status_reply_markup = await craft_trade_status()
         await send_private_or_alert(status_msg, status_reply_markup)
 
     elif data.startswith("success_"):
@@ -1115,23 +1141,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         story, reply_markup, image_url = craft_success_story(index, gender)
-        message = f"📖 <b>Success Story</b>:\n{story}\n\nJoin Options Trading University to start your own journey!"
+        message = f"📖 Success Story:\n{story}\n\nJoin Options Trading University to start your own journey!"
         if image_url and image_url.startswith("http"):
-            try:
-                await query.message.reply_photo(
-                    photo=image_url,
-                    caption=message,
-                    parse_mode=constants.ParseMode.HTML,
-                    reply_markup=reply_markup
-                )
-            except Exception:
-                await send_private_or_alert(message, reply_markup)
+            await send_private_or_alert(None, reply_markup, image_url, message)
         else:
             await send_private_or_alert(message, reply_markup)
 
     elif data == "terms":
         terms_text = (
-            f"📜 <b>Terms of Service</b> 📜\n\n"
+            f"📜 Terms of Service 📜\n\n"
             f"1. Acceptance of Terms: By using this bot, you agree to abide by these Terms of Service.\n"
             f"2. User Conduct: Users must comply with all applicable laws and not use the bot for illegal activities.\n"
             f"3. Disclaimer: All trading insights are for informational purposes only and not financial advice.\n"
@@ -1144,7 +1162,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "privacy":
         privacy_text = (
-            f"🔒 <b>Privacy Policy</b> 🔒\n\n"
+            f"🔒 Privacy Policy 🔒\n\n"
             f"1. Information Collected: We collect minimal data such as user IDs and usernames for bot functionality.\n"
             f"2. Use of Data: Data is used to personalize experiences and improve services.\n"
             f"3. Data Sharing: We do not sell your data. It may be shared with partners for service improvement.\n"
@@ -1159,7 +1177,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         symbol = random.choice(ALL_SYMBOLS)
         deposit, profit, percentage_gain, reason, trading_style, is_loss = generate_profit_scenario(symbol)
         msg = (
-            f"💸 <b>Simulated Trade for {user.first_name}</b>\n"
+            f"💸 Simulated Trade for {user.first_name}\n"
             f"Symbol: {symbol}\n"
             f"Deposit: ${deposit:,.2f}\n"
             f"{'Loss' if is_loss else 'Profit'}: ${abs(profit):,.2f}\n"
@@ -1176,20 +1194,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "hall_of_fame":
         with engine.connect() as conn:
             df = pd.read_sql("SELECT trader_name, profit, scope, timestamp FROM hall_of_fame ORDER BY timestamp DESC LIMIT 10", conn)
-        lines = [f"🏆 <b>{row.trader_name}</b> — ${row.profit:,} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
-        msg = f"🏛️ <b>Hall of Fame</b> 🏛️\n\n{'\n'.join(lines) if lines else 'No winners yet!'}\n\nJoin Options Trading University! #HallOfFame"
+        lines = [f"🏆 {row.trader_name} — ${row.profit:,} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
+        msg = f"🏛️ Hall of Fame 🏛️\n\n{'\n'.join(lines) if lines else 'No winners yet!'}\n\nJoin Options Trading University! #HallOfFame"
         keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
         await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
 
     elif data == "country_leaderboard":
         keyboard = [[InlineKeyboardButton(c, callback_data=f"country_{c}")] for c in COUNTRIES]
         keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back")])
-        await send_private_or_alert("🌍 <b>Select a Country Leaderboard</b>", InlineKeyboardMarkup(keyboard))
+        await send_private_or_alert("🌍 Select a Country Leaderboard", InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("country_"):
         country = data.split("_")[1]
         lines = build_country_leaderboard(country)
-        msg = f"🌍 <b>{country} Leaderboard</b>\n\n{'\n'.join(lines) if lines else 'No traders from this country yet!'}\n\nJoin Options Trading University! #CountryLeaderboard"
+        msg = f"🌍 {country} Leaderboard\n\n{'\n'.join(lines) if lines else 'No traders from this country yet!'}\n\nJoin Options Trading University! #CountryLeaderboard"
         keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
         await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
 
@@ -1200,18 +1218,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Stocks", callback_data="asset_stocks")],
             [InlineKeyboardButton("Back to Menu", callback_data="back")]
         ]
-        await send_private_or_alert("📊 <b>Select Asset Leaderboard</b>", InlineKeyboardMarkup(keyboard))
+        await send_private_or_alert("📊 Select Asset Leaderboard", InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("asset_"):
         asset_type = data.split("_")[1]
         lines = build_asset_leaderboard(asset_type)
-        msg = f"📊 <b>{asset_type.capitalize()} Leaderboard</b>\n\n{'\n'.join(lines) if lines else 'No trades in this category yet!'}\n\nJoin Options Trading University! #AssetLeaderboard"
+        msg = f"📊 {asset_type.capitalize()} Leaderboard\n\n{'\n'.join(lines) if lines else 'No trades in this category yet!'}\n\nJoin Options Trading University! #AssetLeaderboard"
         keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
         await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
 
     elif data == "roi_leaderboard":
         lines = build_roi_leaderboard()
-        msg = f"📈 <b>Top ROI Leaderboard</b>\n\n{'\n'.join(lines) if lines else 'No trades recorded yet!'}\n\nJoin Options Trading University! #ROILeaderboard"
+        msg = f"📈 Top ROI Leaderboard\n\n{'\n'.join(lines) if lines else 'No trades recorded yet!'}\n\nJoin Options Trading University! #ROILeaderboard"
         keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
         await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
 
@@ -1241,7 +1259,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        f"📈 <b>Market Overview</b> 📊\n"
+        f"📈 Market Overview 📊\n"
         f"Stocks: {', '.join(STOCK_SYMBOLS)}\n"
         f"Crypto: {', '.join(CRYPTO_SYMBOLS)}\n"
         f"Meme Coins: {', '.join(MEME_COINS)}\n"
@@ -1268,7 +1286,7 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        f"ℹ️ <b>Help & Commands</b> ℹ️\n"
+        f"ℹ️ Help & Commands ℹ️\n"
         f"/start - Welcome message and community link\n"
         f"/status - View current market focus\n"
         f"/trade_status - Check top trader rankings\n"
@@ -1312,8 +1330,8 @@ async def trade_status_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def hall_of_fame_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with engine.connect() as conn:
         df = pd.read_sql("SELECT trader_name, profit, scope, timestamp FROM hall_of_fame ORDER BY timestamp DESC LIMIT 10", conn)
-    lines = [f"🏆 <b>{row.trader_name}</b> — ${row.profit:,} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
-    msg = f"🏛️ <b>Hall of Fame</b> 🏛️\n\n{'\n'.join(lines) if lines else 'No winners yet!'}\n\nJoin Options Trading University! #HallOfFame"
+    lines = [f"🏆 {row.trader_name} — ${row.profit:,} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
+    msg = f"🏛️ Hall of Fame 🏛️\n\n{'\n'.join(lines) if lines else 'No winners yet!'}\n\nJoin Options Trading University! #HallOfFame"
     keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
     try:
         await context.bot.send_message(
