@@ -162,9 +162,14 @@ metadata.create_all(engine)
 # Migrate users table to add missing columns if necessary
 inspector = inspect(engine)
 user_columns = [col['name'] for col in inspector.get_columns('users')]
+dialect = engine.dialect.name
 if 'last_login' not in user_columns:
+    if dialect == 'postgresql':
+        date_type = 'TIMESTAMP'
+    else:
+        date_type = 'DATETIME'
     with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE users ADD COLUMN last_login DATETIME"))
+        conn.execute(text(f"ALTER TABLE users ADD COLUMN last_login {date_type}"))
 if 'login_streak' not in user_columns:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE users ADD COLUMN login_streak INTEGER DEFAULT 0"))
@@ -828,6 +833,47 @@ def log_post(symbol, content, deposit, profit, user_id=None, trader_id=None):
     except Exception as e:
         logger.error(f"Database error: {e}")
 
+async def simulate_reactions(app, chat_id, message_id, original_text, reply_markup):
+    reactions = {'🔥': 0, '🚀': 0, '😱': 0}
+    total_reactions = random.randint(10, 40)
+    steps = random.randint(5, 10)  # update in batches
+    per_step = total_reactions // steps
+    for step in range(steps):
+        await asyncio.sleep(random.uniform(30, 120))  # every 30-120 seconds
+        for _ in range(per_step):
+            emoji = random.choice(list(reactions.keys()))
+            reactions[emoji] += 1
+        reaction_text = " ".join([f"{emoji} {count}" for emoji, count in reactions.items() if count > 0])
+        updated_text = original_text + (f"\n\n{reaction_text}" if reaction_text else "")
+        try:
+            await app.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=updated_text,
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Failed to edit message: {e}")
+            break
+    # final batch
+    remaining = total_reactions - sum(reactions.values())
+    for _ in range(remaining):
+        emoji = random.choice(list(reactions.keys()))
+        reactions[emoji] += 1
+    reaction_text = " ".join([f"{emoji} {count}" for emoji, count in reactions.items() if count > 0])
+    updated_text = original_text + (f"\n\n{reaction_text}" if reaction_text else "")
+    try:
+        await app.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=updated_text,
+            parse_mode=constants.ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        logger.error(f"Failed to edit message: {e}")
+
 async def announce_winner(scope, app):
     lines = await fetch_cached_rankings(scope=scope)
     if not lines:
@@ -881,7 +927,7 @@ async def profit_posting_loop(app):
             )
 
             try:
-                await app.bot.send_message(
+                message = await app.bot.send_message(
                     chat_id=TELEGRAM_CHAT_ID,
                     text=msg,
                     parse_mode=constants.ParseMode.HTML,
@@ -891,6 +937,8 @@ async def profit_posting_loop(app):
                 log_post(symbol, msg, deposit, profit, trader_id=trader_id)
 
                 await fetch_cached_rankings(new_name=trader_name, new_profit=profit, app=app)
+
+                asyncio.create_task(simulate_reactions(app, TELEGRAM_CHAT_ID, message.message_id, msg, reply_markup))
 
                 if profit > 10000 and not is_loss:
                     await app.bot.send_message(
