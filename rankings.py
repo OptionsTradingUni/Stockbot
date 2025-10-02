@@ -1,75 +1,113 @@
-import json
+import json, random
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import select, delete, insert, update
-from db import engine, rankings_cache, trader_metadata
-from data import RANKING_TRADERS
-from config import RANKINGS_TTL_HOURS
+from sqlalchemy import select, delete, insert
+from telegram import constants
+from db import engine, trader_metadata, hall_of_fame
+from data import RANKING_TRADERS, TELEGRAM_CHAT_ID
 
-MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
-# cache id = 1 always
-CACHE_ID = 1
+# --------------------------------
+# Fetch Cached Rankings
+# --------------------------------
+async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope="overall"):
+    now = datetime.now(timezone.utc)
+    with engine.begin() as conn:
+        row = conn.execute(select("id","content","timestamp").select_from("rankings_cache").where("id=1")).fetchone()
+        refresh_needed = False
+        ranking_pairs = []
 
-def _pairs_from_db():
+        if row:
+            ts = row.timestamp
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            ranking_pairs = json.loads(row.content)
+            if (now - ts) >= timedelta(hours=5):
+                refresh_needed = True
+
+        if not row or refresh_needed:
+            ranking_pairs = build_rankings_snapshot()
+            conn.execute(delete("rankings_cache").where("id=1"))
+            conn.execute(insert("rankings_cache").values(
+                id=1,
+                content=json.dumps(ranking_pairs),
+                timestamp=now
+            ))
+
+        elif new_name and new_profit:
+            ranking_pairs.append({"name": new_name, "profit": new_profit})
+            ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
+            ranking_pairs = ranking_pairs[:20]
+            conn.execute(delete("rankings_cache").where("id=1"))
+            conn.execute(insert("rankings_cache").values(
+                id=1,
+                content=json.dumps(ranking_pairs),
+                timestamp=now
+            ))
+
+            if app:
+                await app.bot.send_message(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    text=f"🔥 BREAKING: {new_name} entered Top 20 with ${new_profit:,} profit!",
+                    parse_mode=constants.ParseMode.HTML
+                )
+
+        medals = {1:"🥇",2:"🥈",3:"🥉"}
+        lines = []
+        for i, entry in enumerate(ranking_pairs, start=1):
+            badge = medals.get(i, f"{i}.")
+            lines.append(f"{badge} {entry['name']} — ${entry['profit']:,} profit")
+        return lines
+
+# --------------------------------
+# Build Snapshots
+# --------------------------------
+def build_rankings_snapshot():
+    pairs = []
     with engine.connect() as conn:
         rows = conn.execute(select(trader_metadata.c.trader_id, trader_metadata.c.total_profit)).fetchall()
-    # map trader_id -> display name (only from RANKING_TRADERS)
-    id_to_name = {tid: name for tid, name in RANKING_TRADERS}
-    pairs = []
-    for tid, total in rows:
-        if tid in id_to_name:
-            pairs.append({"trader_id": tid, "name": id_to_name[tid], "profit": int(total or 0)})
-    pairs.sort(key=lambda x: x["profit"], reverse=True)
+        for trader_id, profit in rows:
+            name = next((n for tid,n in RANKING_TRADERS if tid==trader_id), None)
+            if name:
+                pairs.append({"name":name,"profit":profit})
+    pairs.sort(key=lambda x:x["profit"], reverse=True)
     return pairs[:20]
 
-def get_cached_rankings(now=None):
-    now = now or datetime.now(timezone.utc)
-    with engine.begin() as conn:
-        row = conn.execute(select(rankings_cache).where(rankings_cache.c.id == CACHE_ID)).fetchone()
-        if row:
-            ts = row.timestamp.replace(tzinfo=timezone.utc) if row.timestamp and row.timestamp.tzinfo is None else row.timestamp
-            if ts and (now - ts) < timedelta(hours=RANKINGS_TTL_HOURS):
-                return json.loads(row.content)
-        # refresh
-        pairs = _pairs_from_db()
-        conn.execute(delete(rankings_cache).where(rankings_cache.c.id == CACHE_ID))
-        conn.execute(insert(rankings_cache).values(id=CACHE_ID, content=json.dumps(pairs), timestamp=now))
-        return pairs
-
-def maybe_insert_and_refresh(new_name: str, new_profit: int):
-    # Only insert if beats lowest of cached top-20
-    pairs = get_cached_rankings()
-    if not pairs:
-        return get_cached_rankings()
-    lowest = pairs[-1]["profit"]
-    if new_profit <= lowest:
-        return pairs
-    # Replace or add (ensure name is from RANKING_TRADERS)
-    id_by_name = {name: tid for tid, name in RANKING_TRADERS}
-    if new_name not in id_by_name:
-        return pairs
-    tid = id_by_name[new_name]
-    # merge & cap 20
-    merged = [p for p in pairs if p["trader_id"] != tid] + [{"trader_id": tid, "name": new_name, "profit": new_profit}]
-    merged.sort(key=lambda x: x["profit"], reverse=True)
-    merged = merged[:20]
-    # store
-    with engine.begin() as conn:
-        conn.execute(delete(rankings_cache).where(rankings_cache.c.id == CACHE_ID))
-        conn.execute(insert(rankings_cache).values(id=CACHE_ID, content=json.dumps(merged), timestamp=datetime.now(timezone.utc)))
-    return merged
-
-def format_rank_lines(pairs):
-    from sqlalchemy import select
-    from db import trader_metadata, engine
-    id_to_meta = {}
+# ROI leaderboard
+def build_roi_leaderboard():
     with engine.connect() as conn:
-        for p in pairs:
-            row = conn.execute(select(trader_metadata.c.level, trader_metadata.c.win_streak, trader_metadata.c.country)
-                               .where(trader_metadata.c.trader_id == p["trader_id"])).fetchone()
-            id_to_meta[p["trader_id"]] = row or ("Rookie", 0, "Unknown")
-    lines = []
-    for i, p in enumerate(pairs, start=1):
-        level, streak, country = id_to_meta.get(p["trader_id"], ("Rookie", 0, "Unknown"))
-        medal = MEDALS.get(i, f"{i}.")
-        lines.append(f"{medal} <b>{p['name']}</b> — ${p['profit']:,} profit ({level}, {country})")
+        rows = conn.execute(
+            "SELECT trader_id, SUM(profit) as total_profit, SUM(deposit) as total_deposit "
+            "FROM posts GROUP BY trader_id HAVING total_deposit>0 ORDER BY (SUM(profit)/SUM(deposit)) DESC LIMIT 10"
+        ).fetchall()
+    medals={1:"🥇",2:"🥈",3:"🥉"}
+    lines=[]
+    for i,row in enumerate(rows,1):
+        name = next((n for tid,n in RANKING_TRADERS if tid==row.trader_id), None)
+        if name:
+            roi = round((row.total_profit/row.total_deposit)*100,1)
+            badge=medals.get(i,f"{i}.")
+            lines.append(f"{badge} {name} — {roi}% ROI (${row.total_profit:,})")
     return lines
+
+# Country leaderboard
+def build_country_leaderboard(country):
+    with engine.connect() as conn:
+        rows=conn.execute(
+            f"SELECT trader_id,total_profit FROM trader_metadata WHERE country='{country}' ORDER BY total_profit DESC LIMIT 10"
+        ).fetchall()
+    medals={1:"🥇",2:"🥈",3:"🥉"}
+    return [f"{medals.get(i,f'{i}.')} {next((n for tid,n in RANKING_TRADERS if tid==row.trader_id),None)} — ${int(row.total_profit):,}"
+            for i,row in enumerate(rows,1)]
+
+# Daily/Weekly/Monthly winners → hall of fame
+async def announce_winner(scope, app):
+    lines = await fetch_cached_rankings(scope=scope)
+    if not lines: return
+    winner_line = lines[0]
+    winner_name = winner_line.split("—")[0].split()[-1]
+    winner_profit = int("".join([c for c in winner_line.split("—")[1] if c.isdigit()]))
+    with engine.begin() as conn:
+        conn.execute(insert(hall_of_fame).values(
+            trader_name=winner_name,profit=winner_profit,scope=scope,timestamp=datetime.now(timezone.utc)
+        ))
+    msg=f"🔥 {scope.capitalize()} Winner 🏆\n👑 {winner_name} made ${winner_profit:,}!"
+    await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID,text=msg,parse_mode=constants.ParseMode.HTML)
