@@ -384,61 +384,56 @@ def fetch_recent_profits():
 # Helper: Generate profit scenario with realistic gains
 def generate_profit_scenario(symbol):
     """
-    - Meme coins: 5–50x normally; 10% chance of 30–100x 'moonshot'
-      Deposits: 500–3000 (natural integers, not rounded).
-    - Stocks/Crypto: 2–8x normally, but if deposit is a WHALE (20k–40k),
-      cap gains tighter at 2–5x for realism.
-      Deposits mix:
-        • 35% small retail: 100–400
-        • 50% regular: 500–1500
-        • 15% whale: 20000–40000
-    - Profits rounded to nearest 50; deposits are NOT rounded.
+    Generate realistic profit scenarios:
+    - Common profits: 4k–18k
+    - Small occasional: 1k–3k
+    - Rare big: 20k–40k
+    - Very rare moonshot: 50k+
     """
-    recent_profits = fetch_recent_profits()  # your existing DB check
+    recent_profits = fetch_recent_profits()
 
-    # --- MEME COINS (wild but believable) ---
+    # --- MEME COINS ---
     if symbol in MEME_COINS:
-        deposit = random.randint(500, 7000)  # organic amounts like 817, 1045, etc.
-        mult = random.uniform(5, 50)
-        if random.random() < 0.10:  # 10% moonshot
-            mult = random.uniform(30, 100)
+        deposit = random.randint(500, 5000)
 
-        profit = int((deposit * mult) // 50 * 50)
-        # uniqueness guard
-        tries = 0
-        while profit in recent_profits and tries < 10:
-            mult = random.uniform(5, 50)
-            if random.random() < 0.10:
-                mult = random.uniform(30, 100)
-            profit = int((deposit * mult) // 50 * 50)
-            tries += 1
-
-    # --- STOCKS / MAJOR CRYPTO (more conservative) ---
-    else:
         r = random.random()
-        if r < 0.35:                       # small retail
-            deposit = random.randint(100, 900)
-            mult_low, mult_high = 2.0, 8.0
-        elif r < 0.85:                     # regular
-            deposit = random.randint(500, 8500)
-            mult_low, mult_high = 2.0, 8.0
-        else:                              # whale (cap gains tighter for realism)
-            deposit = random.randint(20000, 40000)
-            mult_low, mult_high = 2.0, 5.0  # <-- tighter range for big capital
+        if r < 0.10:  # 10% → small profits (1–3k)
+            mult = random.uniform(2, 6)
+        elif r < 0.80:  # 70% → normal (4–18k range)
+            mult = random.uniform(5, 15)
+        elif r < 0.95:  # 15% → bigger (20–40k)
+            mult = random.uniform(15, 30)
+        else:  # 5% → moonshot 50k+
+            mult = random.uniform(40, 80)
 
-        mult = random.uniform(mult_low, mult_high)
         profit = int((deposit * mult) // 50 * 50)
 
-        # uniqueness guard
-        tries = 0
-        while profit in recent_profits and tries < 10:
-            mult = random.uniform(mult_low, mult_high)
-            profit = int((deposit * mult) // 50 * 50)
-            tries += 1
+    # --- STOCKS / CRYPTO ---
+    else:
+        deposit = random.randint(500, 3000)
+        r = random.random()
+        if r < 0.15:  # 15% → 1–3k
+            mult = random.uniform(2, 4)
+        elif r < 0.85:  # 70% → 4–18k
+            mult = random.uniform(2.5, 6)
+        elif r < 0.95:  # 10% → 20–40k
+            deposit = random.randint(5000, 15000)
+            mult = random.uniform(2, 4)
+        else:  # 5% → rare 50k+
+            deposit = random.randint(10000, 20000)
+            mult = random.uniform(3, 5)
 
-    # --- Narratives ---
+        profit = int((deposit * mult) // 50 * 50)
+
+    # --- Avoid duplicates ---
+    tries = 0
+    while profit in recent_profits and tries < 10:
+        profit = int((deposit * random.uniform(2, 8)) // 50 * 50)
+        tries += 1
+
     percentage_gain = round((profit / deposit - 1) * 100, 1)
 
+    # --- Narratives ---
     if symbol in STOCK_SYMBOLS:
         trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
         reasons = [
@@ -446,16 +441,14 @@ def generate_profit_scenario(symbol):
             f"Solid {trading_style} execution on {symbol}.",
             f"{symbol} strength confirmed by clean {trading_style}.",
             f"Market favored {symbol} with strong {trading_style} follow-through.",
-            f"{trading_style} on {symbol} delivered high quality entries.",
         ]
     elif symbol in CRYPTO_SYMBOLS:
         trading_style = random.choice(["HODL", "Swing Trade", "DCA", "Arbitrage", "Leverage Trading"])
         reasons = [
             f"{symbol} {trading_style} rode a liquidity wave.",
-            f"{trading_style} on {symbol} aligned with trend expansion.",
-            f"{symbol} breakout + {trading_style} risk control.",
-            f"Clean {trading_style} structure lifted {symbol}.",
-            f"{symbol} trend leg advanced with disciplined {trading_style}.",
+            f"{trading_style} on {symbol} aligned with breakout.",
+            f"{symbol} breakout + {trading_style} worked well.",
+            f"Disciplined {trading_style} structure lifted {symbol}.",
         ]
     else:
         trading_style = random.choice(["Early Sniping", "Pump Riding", "Community Flip", "Airdrop Hunt"])
@@ -464,7 +457,6 @@ def generate_profit_scenario(symbol):
             f"Community traction sent {symbol} higher.",
             f"{symbol} trend pop after fresh flows.",
             f"Smart {trading_style} timing on {symbol}.",
-            f"{symbol} leg-up after catalysts and chatter.",
         ]
 
     reason = random.choice(reasons) + f" (+{percentage_gain}%)"
@@ -545,65 +537,81 @@ def generate_profit_scenario(symbol):
 
     return deposit, profit, percentage_gain, random.choice(reasons), trading_style
 
+# ---------------------------
+# Leaderboard Helpers
+# ---------------------------
 def fetch_cached_rankings():
     """
-    Build a rich leaderboard with 15–20 names, descending, unique totals.
-    Cache for 5 hours to keep the story coherent across posts.
+    Return current leaderboard from DB (Top 10).
     """
-    now = datetime.now(timezone.utc)
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache)).fetchone()
-        if row:
-            ts = row.timestamp
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            if (now - ts) < timedelta(hours=5):
-                return row.content.split("\n")
+        if not row:
+            return []
+        return [line for line in row.content.split("\n") if line.strip()]
 
-        # How many entries this time (15–20)
-        count = random.randint(15, 20)
 
-        # If you created RANKING_TRADERS with ~200 names, this will sample cleanly:
-        selected = random.sample(RANKING_TRADERS, count)
+def save_rankings(parsed):
+    """
+    Save top 10 traders to DB with medals and return lines.
+    """
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines = []
+    for i, (name, total) in enumerate(parsed, start=1):
+        badge = medals.get(i, f"{i}.")
+        lines.append(f"{badge} <b>{name}</b> — ${total:,} profit")
 
-        # Buckets for believable descending totals
-        # Top 3: 15k–40k, next 5: 8k–15k, rest: 2k–8k
-        ranges = []
-        for i in range(1, count + 1):
-            if i <= 3:                # podium
-                ranges.append((15000, 40000))
-            elif i <= 8:              # upper mid
-                ranges.append((8000, 15000))
-            else:                     # rest
-                ranges.append((2000, 8000))
-
-        # Create unique totals per slot, then sort desc anyway (for realism)
-        totals = set()
-        ranking_pairs = []
-        for i, (_, name) in enumerate(selected, start=1):
-            low, high = ranges[i-1]
-            val = random.randint(low, high) // 50 * 50
-            while val in totals:
-                val = random.randint(low, high) // 50 * 50
-            totals.add(val)
-            ranking_pairs.append((name, val))
-
-        # Sort by profit descending
-        ranking_pairs.sort(key=lambda x: x[1], reverse=True)
-
-        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-        lines = []
-        for i, (name, total) in enumerate(ranking_pairs, start=1):
-            badge = medals.get(i, f"{i}.")
-            lines.append(f"{badge} <b>{name}</b> — ${total:,} profit")
-
-        # Cache snapshot
+    with engine.begin() as conn:
         conn.execute(delete(rankings_cache))
         conn.execute(insert(rankings_cache).values(
             content="\n".join(lines),
-            timestamp=now
+            timestamp=datetime.now(timezone.utc)
         ))
-        return lines
+    return lines
+
+
+def update_rankings_with_new_profit(trader_name, new_profit):
+    """
+    Insert into leaderboard if profit > lowest current (Top 10).
+    Keeps only Top 10.
+    Returns: (lines, newcomer_position or None)
+    """
+    parsed = fetch_cached_rankings()
+
+    # If no leaderboard yet, seed it with random traders
+    if not parsed:
+        selected = random.sample(RANKING_TRADERS, 10)
+        parsed = [(name, random.randint(4000, 18000)) for _, name in selected]
+
+    # Convert parsed back to list of tuples
+    clean = []
+    for line in parsed:
+        try:
+            name = line.split("—")[0].split("</b>")[0].split("<b>")[-1].strip()
+            profit = int(line.split("$")[-1].split()[0].replace(",", ""))
+            clean.append((name, profit))
+        except:
+            continue
+
+    parsed = clean
+
+    # If profit not big enough, ignore
+    if len(parsed) >= 10:
+        threshold = parsed[-1][1]
+        if new_profit <= threshold:
+            return save_rankings(parsed), None
+
+    # Insert and sort
+    parsed.append((trader_name, new_profit))
+    parsed.sort(key=lambda x: x[1], reverse=True)
+    parsed = parsed[:10]
+
+    # Save back
+    lines = save_rankings(parsed)
+
+    # Newcomer position
+    pos = [p[0] for p in parsed].index(trader_name) + 1
+    return lines, pos
 
 def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -683,14 +691,14 @@ def log_post(symbol, content, deposit, profit, user_id=None):
     except Exception as e:
         logger.error(f"Database error: {e}")
 
-# Background posting loop with mentions every 20 mins
-# Background posting loop with realistic random intervals
+# Posting Loop
+# ---------------------------
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
         try:
-            # ⏳ Pick a realistic random interval (minutes)
-            wait_minutes = random.choice([5, 10, 15, 20, 30, 40, 50, 60, 75, 90, 120])
+            # ⏳ Random wait
+            wait_minutes = random.choice([15, 20, 30, 40])
             wait_seconds = wait_minutes * 60
             logger.info(f"Next profit post in {wait_minutes}m at {datetime.now(timezone.utc)}")
             await asyncio.sleep(wait_seconds)
@@ -700,40 +708,64 @@ async def profit_posting_loop(app):
                 symbol = random.choice(MEME_COINS)
             else:
                 symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
-            
-            # Generate profit scenario
-            deposit, profit, percentage_gain, reason, trading_style = generate_profit_scenario(symbol)
-            msg, reply_markup = craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style)
 
-            # ✅ Post to Telegram
-            try:
-                await app.bot.send_message(
-                    chat_id=TELEGRAM_CHAT_ID,
-                    text=msg,
-                    parse_mode=constants.ParseMode.HTML,
-                    reply_markup=reply_markup
-                )
-                logger.info(f"[PROFIT POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → Profit ${profit:.2f}")
-                log_post(symbol, msg, deposit, profit)
-            except Exception as e:
-                logger.error(f"Failed to post profit for {symbol}: {e}")
+            # --- Profit Ranges ---
+            if symbol in MEME_COINS:
+                deposit = random.randint(500, 5000)
+                mult = random.uniform(3, 15)
+                if random.random() < 0.05:  # rare moonshot
+                    mult = random.uniform(20, 60)
+            else:
+                r = random.random()
+                if r < 0.6:  # common range
+                    deposit = random.randint(400, 2500)
+                    mult = random.uniform(2, 6)
+                elif r < 0.9:  # less common, bigger
+                    deposit = random.randint(3000, 7000)
+                    mult = random.uniform(2, 5)
+                else:  # rare whale
+                    deposit = random.randint(20000, 40000)
+                    mult = random.uniform(2, 4)
 
-            await asyncio.sleep(RATE_LIMIT_SECONDS)
+            profit = int((deposit * mult) // 50 * 50)
+            percentage_gain = round((profit / deposit - 1) * 100, 1)
 
-            # 🎯 Occasionally also post rankings/status
-            if random.random() < 0.2:
-                status_msg, status_reply_markup = craft_trade_status()
-                try:
-                    await app.bot.send_message(
-                        chat_id=TELEGRAM_CHAT_ID,
-                        text=status_msg,
-                        parse_mode=constants.ParseMode.HTML,
-                        reply_markup=status_reply_markup
-                    )
-                    logger.info("Posted trade status update.")
-                    log_post(None, status_msg, None, None)
-                except Exception as e:
-                    logger.error(f"Failed to post trade status: {e}")
+            trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
+            reason = f"{symbol} {trading_style} worked out perfectly! (+{percentage_gain}%)"
+
+            # 👤 Pick a trader name
+            trader_id, trader_name = random.choice(RANKING_TRADERS)
+
+            # 🏆 Try update leaderboard
+            rankings, pos = update_rankings_with_new_profit(trader_name, profit)
+
+            # 📢 Main profit message
+            msg = (
+                f"📈 <b>{symbol} Profit Update</b>\n"
+                f"👤 Trader: {trader_name}\n"
+                f"💰 Invested: ${deposit:,}\n"
+                f"🎯 Profit: ${profit:,} (+{percentage_gain}%)\n"
+                f"📊 Strategy: {trading_style}\n"
+                f"🔥 {reason}\n\n"
+                f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
+            )
+            await app.bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=msg,
+                parse_mode=constants.ParseMode.HTML
+            )
+
+            # 🚀 Hype message if leaderboard changes
+            if pos:
+                if pos == 1:
+                    hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
+                elif pos <= 3:
+                    hype = f"🔥 {trader_name} broke into the Top 3 with ${profit:,}!"
+                else:
+                    hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
+                await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
+
+            log_post(symbol, msg, deposit, profit)
 
         except asyncio.CancelledError:
             logger.info("Profit posting loop cancelled.")
@@ -741,36 +773,43 @@ async def profit_posting_loop(app):
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
             await asyncio.sleep(5)
-
-# /start handler
+# -----------------------
+# /start handler with Top 3 Rankings
+# -----------------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
 
+    # ✅ Get leaderboard (cached or rebuilt if needed)
+    social_lines = fetch_cached_rankings()  # already returns sorted list
+    top3 = "\n".join(social_lines[:3]) if social_lines else "No rankings yet."
+
     # Pick a random success story index
-    total_stories = len(SUCCESS_STORY_TEMPLATES["male"]) + len(SUCCESS_STORY_TEMPLATES["female"])
+    total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
     random_index = random.randint(0, total_stories - 1)
 
     keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-         InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
+        [InlineKeyboardButton("📊 Full Rankings", callback_data="rankings"),
+         InlineKeyboardButton("📖 Success Stories", callback_data=f"success_any_{random_index}")],
         [InlineKeyboardButton("📢 Join Profit Group", url="https://t.me/+v2cZ4q1DXNdkMjI8")],
-        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
-         InlineKeyboardButton("Terms of Service", callback_data="terms")],
-        [InlineKeyboardButton("Privacy Policy", callback_data="privacy")]
+        [InlineKeyboardButton("🌐 Visit Website", url=WEBSITE_URL),
+         InlineKeyboardButton("📜 Terms", callback_data="terms")],
+        [InlineKeyboardButton("🔒 Privacy", callback_data="privacy")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     welcome_text = (
-        f"Welcome, {name}!\n\n"
-        f"At Options Trading University, we provide expert-led training, real-time market analysis, "
-        f"and a thriving community of successful traders. Our proven strategies have helped members achieve "
-        f"consistent gains, with profit updates shared.\n"
+        f"👋 Welcome, <b>{name}</b>!\n\n"
+        f"At <b>Options Trading University</b>, we provide expert-led training, live profit flexes, "
+        f"and a thriving trader community.\n\n"
+        f"🔥 Here are today’s <b>Top 3 Traders</b>:\n"
+        f"{top3}\n\n"
         f"Why join us?\n"
-        f"- Access to high-probability trades (up to 900% gains on meme coins).\n"
-        f"- Guidance from top traders with a track record of success.\n"
-        f"- Exclusive insights on stocks, crypto, and meme coins.\n\n"
+        f"- 💸 Real trades with 2x–8x on Stocks/Crypto\n"
+        f"- 🚀 Meme Coin Moonshots up to 100x\n"
+        f"- 🌍 Country leaderboards + global rankings\n"
+        f"- 📖 Inspiring success stories\n\n"
         f"Start your journey to financial growth today!"
     )
 
@@ -781,18 +820,18 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-    # ✅ Safely add user to DB
+    # ✅ Store user in DB
     try:
         with engine.begin() as conn:
-            stmt = users.insert().prefix_with("OR IGNORE").values(
-                user_id=str(user.id),
-                username=user.username or "unknown",
-                display_name=name,
-                wins=0,
-                total_trades=0,
-                total_profit=0
-            )
-            conn.execute(stmt)
+            conn.execute(text("""
+                INSERT INTO users (user_id, username, display_name, wins, total_trades, total_profit)
+                VALUES (:id, :u, :d, 0, 0, 0)
+                ON CONFLICT(user_id) DO NOTHING
+            """), {
+                "id": str(user.id),
+                "u": user.username or "unknown",
+                "d": name
+            })
     except Exception as e:
         logger.error(f"Error adding user {user.id}: {e}")
         
@@ -963,14 +1002,31 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+# ---------------------------
 # /trade_status handler
+# ---------------------------
 async def trade_status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg, reply_markup = craft_trade_status()
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    rankings = fetch_cached_rankings()
+
+    if not rankings:
+        msg = "🏆 Leaderboard is still warming up... no entries yet!"
+    else:
+        msg = (
+            f"🏆 <b>Top 10 Trader Rankings</b>\n"
+            f"As of {ts}:\n\n" +
+            "\n".join(rankings) +
+            "\n\nKeep grinding — next profit update could shake things up!"
+        )
+
+    keyboard = [
+        [InlineKeyboardButton("⬅️ Back", callback_data="back")]
+    ]
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=msg,
         parse_mode=constants.ParseMode.HTML,
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 def main():
