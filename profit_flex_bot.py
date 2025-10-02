@@ -613,7 +613,7 @@ def build_roi_leaderboard():
         lines.append(f"{badge} <b>{name}</b> — {roi}% ROI (${row.total_profit:,} profit)")
     return lines
 
-def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope="overall"):
+async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope="overall"):
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:
         row = conn.execute(select(rankings_cache).where(rankings_cache.c.id == 1)).fetchone()
@@ -678,12 +678,12 @@ def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope="overa
             lines.append(f"{badge} <b>{name}</b> — ${total:,} profit{badge_text}")
         return lines
 
-def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style, is_loss, social_lines=None):
+async def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style, is_loss, social_lines=None):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     multiplier = round(profit / deposit, 1) if not is_loss else round(profit / deposit, 2)
 
     if social_lines is None:
-        social_lines = fetch_cached_rankings()
+        social_lines = await fetch_cached_rankings()
 
     social_text = "\n".join(social_lines[:5])
     mention = random.choice(RANKING_TRADERS)[1]
@@ -738,9 +738,9 @@ def craft_success_story(current_index, gender):
 
     return story, InlineKeyboardMarkup(keyboard), image_url
 
-def craft_trade_status():
+async def craft_trade_status():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    social_lines = fetch_cached_rankings()
+    social_lines = await fetch_cached_rankings()
     greed_fear = random.randint(0, 100)
     mood = "🐂 Bullish" if greed_fear > 60 else "🐻 Bearish" if greed_fear < 40 else "🟡 Neutral"
     return (
@@ -869,7 +869,7 @@ async def profit_posting_loop(app):
 
             deposit, profit, percentage_gain, reason, trading_style, is_loss = generate_profit_scenario(symbol)
             trader_id, trader_name = random.choice(RANKING_TRADERS)
-            msg, reply_markup, trader_id, trader_name = craft_profit_message(
+            msg, reply_markup, trader_id, trader_name = await craft_profit_message(
                 symbol, deposit, profit, percentage_gain, reason, trading_style, is_loss
             )
 
@@ -883,7 +883,7 @@ async def profit_posting_loop(app):
                 logger.info(f"[PROFIT POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → {'Loss' if is_loss else 'Profit'} ${abs(profit):.2f}")
                 log_post(symbol, msg, deposit, profit, trader_id=trader_id)
 
-                fetch_cached_rankings(new_name=trader_name, new_profit=profit, app=app)
+                await fetch_cached_rankings(new_name=trader_name, new_profit=profit, app=app)
 
                 if profit > 10000 and not is_loss:
                     await app.bot.send_message(
@@ -930,16 +930,6 @@ async def profit_posting_loop(app):
                         parse_mode=constants.ParseMode.HTML,
                         reply_markup=trend_reply_markup
                     )
-
-            if random.random() < 0.05:
-                poll_question = "Which asset will pump next?"
-                options = random.sample(ALL_SYMBOLS, 4)
-                await app.bot.send_poll(
-                    chat_id=TELEGRAM_CHAT_ID,
-                    question=poll_question,
-                    options=options,
-                    is_anonymous=False
-                )
 
             if random.random() < 0.05:
                 await announce_winner("daily", app)
@@ -1072,7 +1062,7 @@ async def simulate_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_post(symbol, f"Simulated trade for {user.first_name}", deposit, profit, user_id=str(user.id))
     
     if profit > 0:
-        fetch_cached_rankings(new_name=user.first_name or user.username, new_profit=profit, app=context.application)
+        await fetch_cached_rankings(new_name=user.first_name or user.username, new_profit=profit, app=context.application)
     
     msg = (
         f"💸 <b>Simulated Trade for {user.first_name}</b>\n"
@@ -1305,7 +1295,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def trade_status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg, reply_markup = craft_trade_status()
+    msg, reply_markup = await craft_trade_status()
     try:
         await context.bot.send_message(
             chat_id=update.effective_user.id,
