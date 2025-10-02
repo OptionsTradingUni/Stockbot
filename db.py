@@ -94,6 +94,23 @@ trending_tickers = Table(
 
 metadata.create_all(engine)
 
+# db.py (add at bottom, after metadata.create_all(engine))
+
+def get_success_stories():
+    """
+    Fetch success stories (name, story, image) from DB.
+    Returns: {"male": [...], "female": [...]}
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(success_stories.select()).fetchall()
+        stories = {"male": [], "female": []}
+        for row in rows:
+            stories[row.gender].append({
+                "name": row.trader_name,
+                "story": row.story,
+                "image": row.image
+            })
+        return stories
 # -------------------------
 # IMPORT STATIC DATA
 # -------------------------
