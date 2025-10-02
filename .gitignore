@@ -1,4 +1,19 @@
-.env
-profit_flex.db  # SQLite DB; don't commit
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Env
+.env
+*.log
+
+# Virtual env
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
