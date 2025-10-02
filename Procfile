@@ -1,1 +1,1 @@
-worker: python main.py
+worker: python profit_flex_bot.py
