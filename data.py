@@ -18,74 +18,105 @@ ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
 WEBSITE_URL = "https://optionstradinguni.online/"
 
 # -----------------------
-# Countries & Traders
-# -----------------------
+# data.py
 
-# Define countries
-COUNTRIES = ["USA", "Nigeria", "UK", "Japan", "India", "Germany", "France", "Brazil"]
+# 🌍 Supported countries
+COUNTRIES = ["USA", "Nigeria", "UK", "India", "Germany"]
 
-# Assign traders by country (so no mismatch)
-RANKING_TRADERS = {
+# 🌍 Global trader list (id, display name)
+RANKING_TRADERS = [
+    # USA
+    ("JamesLopez", "James Lopez"),
+    ("RobertGarcia", "Robert Garcia"),
+    ("SophiaGonzalez", "Sophia Gonzalez"),
+    ("WilliamRodriguez", "William Rodriguez"),
+    ("OliviaHernandez", "Olivia Hernandez"),
+    ("MichaelBrown", "Michael Brown"),
+    ("DavidMiller", "David Miller"),
+    ("EmmaWhite", "Emma White"),
+    ("JosephTurner", "Joseph Turner"),
+    ("GraceAdams", "Grace Adams"),
+
+    # Nigeria
+    ("BenjaminScott", "Benjamin Scott"),
+    ("ChineduOkafor", "Chinedu Okafor"),
+    ("NgoziAdeyemi", "Ngozi Adeyemi"),
+    ("TundeBalogun", "Tunde Balogun"),
+    ("AmakaObi", "Amaka Obi"),
+    ("IbrahimLawal", "Ibrahim Lawal"),
+    ("FunkeOlawale", "Funke Olawale"),
+    ("VictorUche", "Victor Uche"),
+    ("AishaBello", "Aisha Bello"),
+    ("SamuelOkon", "Samuel Okon"),
+
+    # UK
+    ("CharlotteTorres", "Charlotte Torres"),
+    ("EllaWright", "Ella Wright"),
+    ("HenryAllen", "Henry Allen"),
+    ("ThomasClark", "Thomas Clark"),
+    ("DanielKing", "Daniel King"),
+    ("RebeccaMoore", "Rebecca Moore"),
+    ("OliverHughes", "Oliver Hughes"),
+    ("GeorgeHill", "George Hill"),
+    ("AmeliaScott", "Amelia Scott"),
+    ("ChloeYoung", "Chloe Young"),
+
+    # India
+    ("RaviKumar", "Ravi Kumar"),
+    ("PriyaSharma", "Priya Sharma"),
+    ("ArjunPatel", "Arjun Patel"),
+    ("AnanyaGupta", "Ananya Gupta"),
+    ("RohitVerma", "Rohit Verma"),
+    ("SanjaySingh", "Sanjay Singh"),
+    ("MeeraIyer", "Meera Iyer"),
+    ("VikramJoshi", "Vikram Joshi"),
+    ("SnehaReddy", "Sneha Reddy"),
+    ("KiranNair", "Kiran Nair"),
+
+    # Germany
+    ("LukasMeyer", "Lukas Meyer"),
+    ("HannahSchmidt", "Hannah Schmidt"),
+    ("JonasFischer", "Jonas Fischer"),
+    ("LeaWeber", "Lea Weber"),
+    ("FelixBecker", "Felix Becker"),
+    ("SophieWagner", "Sophie Wagner"),
+    ("MaxSchneider", "Max Schneider"),
+    ("MiaKoch", "Mia Koch"),
+    ("PaulNeumann", "Paul Neumann"),
+    ("ClaraHoffmann", "Clara Hoffmann"),
+]
+
+# 🌍 Country-to-trader mapping
+COUNTRY_TRADERS = {
     "USA": [
-        ("RobertGarcia", "Robert Garcia"),
-        ("JamesLopez", "James Lopez"),
-        ("MichaelBrown", "Michael Brown"),
-        ("WilliamRodriguez", "William Rodriguez"),
-        ("ThomasClark", "Thomas Clark"),
+        "JamesLopez", "RobertGarcia", "SophiaGonzalez", "WilliamRodriguez",
+        "OliviaHernandez", "MichaelBrown", "DavidMiller", "EmmaWhite",
+        "JosephTurner", "GraceAdams"
     ],
     "Nigeria": [
-        ("ChineduOkafor", "Chinedu Okafor"),
-        ("NgoziBalogun", "Ngozi Balogun"),
-        ("TundeAdebayo", "Tunde Adebayo"),
-        ("FunmiOlawale", "Funmi Olawale"),
-        ("BenjaminScott", "Benjamin Scott"),
+        "BenjaminScott", "ChineduOkafor", "NgoziAdeyemi", "TundeBalogun",
+        "AmakaObi", "IbrahimLawal", "FunkeOlawale", "VictorUche",
+        "AishaBello", "SamuelOkon"
     ],
     "UK": [
-        ("CharlotteTorres", "Charlotte Torres"),
-        ("EllaWright", "Ella Wright"),
-        ("HenryAllen", "Henry Allen"),
-        ("VictoriaHarris", "Victoria Harris"),
-        ("JosephTurner", "Joseph Turner"),
+        "CharlotteTorres", "EllaWright", "HenryAllen", "ThomasClark",
+        "DanielKing", "RebeccaMoore", "OliverHughes", "GeorgeHill",
+        "AmeliaScott", "ChloeYoung"
     ],
     "India": [
-        ("RaviPatel", "Ravi Patel"),
-        ("PriyaSharma", "Priya Sharma"),
-        ("AmitKumar", "Amit Kumar"),
-        ("NehaVerma", "Neha Verma"),
-        ("SanjaySingh", "Sanjay Singh"),
+        "RaviKumar", "PriyaSharma", "ArjunPatel", "AnanyaGupta",
+        "RohitVerma", "SanjaySingh", "MeeraIyer", "VikramJoshi",
+        "SnehaReddy", "KiranNair"
     ],
     "Germany": [
-        ("HansMuller", "Hans Muller"),
-        ("KlaraSchmidt", "Klara Schmidt"),
-        ("FritzBecker", "Fritz Becker"),
-        ("SophieFischer", "Sophie Fischer"),
-        ("LukasWagner", "Lukas Wagner"),
-    ],
-    "France": [
-        ("PierreDubois", "Pierre Dubois"),
-        ("MarieClaire", "Marie Claire"),
-        ("JulienLefevre", "Julien Lefevre"),
-        ("CamilleRoux", "Camille Roux"),
-        ("AntoineGirard", "Antoine Girard"),
-    ],
-    "Japan": [
-        ("HiroshiTanaka", "Hiroshi Tanaka"),
-        ("YukiSato", "Yuki Sato"),
-        ("KenjiYamamoto", "Kenji Yamamoto"),
-        ("AyaNakamura", "Aya Nakamura"),
-        ("TaroKobayashi", "Taro Kobayashi"),
-    ],
-    "Brazil": [
-        ("CarlosSilva", "Carlos Silva"),
-        ("AnaCosta", "Ana Costa"),
-        ("JoaoSouza", "Joao Souza"),
-        ("MariaOliveira", "Maria Oliveira"),
-        ("PauloSantos", "Paulo Santos"),
+        "LukasMeyer", "HannahSchmidt", "JonasFischer", "LeaWeber",
+        "FelixBecker", "SophieWagner", "MaxSchneider", "MiaKoch",
+        "PaulNeumann", "ClaraHoffmann"
     ]
 }
 
-# Flatten list for use in leaderboards
-ALL_TRADERS = [(tid, name) for country in RANKING_TRADERS.values() for tid, name in country]
+# 🌐 Website URL
+WEBSITE_URL = "https://optionstradinguni.online/"
 
 # Flattened list (all traders, still useful in leaderboards/rankings)
 RANKING_TRADERS = [trader for country, traders in COUNTRY_TRADERS.items() for trader in traders]
