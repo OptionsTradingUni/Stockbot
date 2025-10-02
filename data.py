@@ -1,77 +1,91 @@
-# Traders mapped to specific countries
-COUNTRY_TRADERS = {
+import os
+from dotenv import load_dotenv
+
+# Load .env
+load_dotenv()
+
+# -----------------------
+# Environment Variables
+# -----------------------
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+STOCK_SYMBOLS = ["TSLA", "AAPL", "NVDA", "MSFT", "AMZN", "GOOGL", "META"]
+CRYPTO_SYMBOLS = ["BTC", "ETH", "SOL"]
+MEME_COINS = ["NIKY"]
+ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
+
+WEBSITE_URL = "https://optionstradinguni.online/"
+
+# -----------------------
+# Countries & Traders
+# -----------------------
+
+# Define countries
+COUNTRIES = ["USA", "Nigeria", "UK", "Japan", "India", "Germany", "France", "Brazil"]
+
+# Assign traders by country (so no mismatch)
+RANKING_TRADERS = {
     "USA": [
         ("RobertGarcia", "Robert Garcia"),
         ("JamesLopez", "James Lopez"),
+        ("MichaelBrown", "Michael Brown"),
         ("WilliamRodriguez", "William Rodriguez"),
-        ("DanielPerez", "Daniel Perez"),
-        ("MatthewRamirez", "Matthew Ramirez"),
-        ("EthanLee", "Ethan Lee"),
-        ("BenjaminScott", "Benjamin Scott"),
-        ("LucasBaker", "Lucas Baker"),
+        ("ThomasClark", "Thomas Clark"),
     ],
     "Nigeria": [
         ("ChineduOkafor", "Chinedu Okafor"),
-        ("ToluChris", "Tolu Chris"),
-        ("EmekaIfeanyi", "Emeka Ifeanyi"),
-        ("NgoziOkeke", "Ngozi Okeke"),
-        ("BlessingAdebayo", "Blessing Adebayo"),
-        ("OluwaseunAdeyemi", "Oluwaseun Adeyemi"),
-        ("AmakaNwosu", "Amaka Nwosu"),
-        ("SamuelEze", "Samuel Eze"),
+        ("NgoziBalogun", "Ngozi Balogun"),
+        ("TundeAdebayo", "Tunde Adebayo"),
+        ("FunmiOlawale", "Funmi Olawale"),
+        ("BenjaminScott", "Benjamin Scott"),
     ],
     "UK": [
+        ("CharlotteTorres", "Charlotte Torres"),
+        ("EllaWright", "Ella Wright"),
         ("HenryAllen", "Henry Allen"),
-        ("SamuelGreen", "Samuel Green"),
-        ("ThomasClark", "Thomas Clark"),
+        ("VictoriaHarris", "Victoria Harris"),
         ("JosephTurner", "Joseph Turner"),
-        ("NathanielReed", "Nathaniel Reed"),
-        ("AnthonyKing", "Anthony King"),
-        ("DavidWright", "David Wright"),
-        ("ChristopherHill", "Christopher Hill"),
     ],
     "India": [
-        ("RajeshKumar", "Rajesh Kumar"),
-        ("AmitSharma", "Amit Sharma"),
-        ("PriyaPatel", "Priya Patel"),
-        ("AnjaliVerma", "Anjali Verma"),
-        ("RahulSingh", "Rahul Singh"),
-        ("DeepakMehta", "Deepak Mehta"),
-        ("SnehaReddy", "Sneha Reddy"),
-        ("ArjunGupta", "Arjun Gupta"),
+        ("RaviPatel", "Ravi Patel"),
+        ("PriyaSharma", "Priya Sharma"),
+        ("AmitKumar", "Amit Kumar"),
+        ("NehaVerma", "Neha Verma"),
+        ("SanjaySingh", "Sanjay Singh"),
     ],
-    "China": [
-        ("LiWei", "Li Wei"),
-        ("ZhangWei", "Zhang Wei"),
-        ("WangFang", "Wang Fang"),
-        ("ChenMing", "Chen Ming"),
-        ("LiuYang", "Liu Yang"),
-        ("ZhaoHui", "Zhao Hui"),
-        ("SunLei", "Sun Lei"),
-        ("WuXiao", "Wu Xiao"),
-    ],
-    "Brazil": [
-        ("CarlosMendez", "Carlos Mendez"),
-        ("MateoVargas", "Mateo Vargas"),
-        ("AndresMorales", "Andres Morales"),
-        ("JoseMartinez", "Jose Martinez"),
-        ("PedroLopez", "Pedro Lopez"),
-        ("VictorSantos", "Victor Santos"),
-        ("RicardoAlvarez", "Ricardo Alvarez"),
-        ("FelipeSilva", "Felipe Silva"),
+    "Germany": [
+        ("HansMuller", "Hans Muller"),
+        ("KlaraSchmidt", "Klara Schmidt"),
+        ("FritzBecker", "Fritz Becker"),
+        ("SophieFischer", "Sophie Fischer"),
+        ("LukasWagner", "Lukas Wagner"),
     ],
     "France": [
-        ("JulienMoreau", "Julien Moreau"),
-        ("ClaireDubois", "Claire Dubois"),
-        ("AntoineLefevre", "Antoine Lefevre"),
-        ("CamilleGirard", "Camille Girard"),
-        ("LouisMartin", "Louis Martin"),
-        ("SophieLaurent", "Sophie Laurent"),
-        ("HugoRoux", "Hugo Roux"),
-        ("EliseMercier", "Elise Mercier"),
+        ("PierreDubois", "Pierre Dubois"),
+        ("MarieClaire", "Marie Claire"),
+        ("JulienLefevre", "Julien Lefevre"),
+        ("CamilleRoux", "Camille Roux"),
+        ("AntoineGirard", "Antoine Girard"),
     ],
-    # You can continue defining for UK, Japan, Russia, Germany, etc.
+    "Japan": [
+        ("HiroshiTanaka", "Hiroshi Tanaka"),
+        ("YukiSato", "Yuki Sato"),
+        ("KenjiYamamoto", "Kenji Yamamoto"),
+        ("AyaNakamura", "Aya Nakamura"),
+        ("TaroKobayashi", "Taro Kobayashi"),
+    ],
+    "Brazil": [
+        ("CarlosSilva", "Carlos Silva"),
+        ("AnaCosta", "Ana Costa"),
+        ("JoaoSouza", "Joao Souza"),
+        ("MariaOliveira", "Maria Oliveira"),
+        ("PauloSantos", "Paulo Santos"),
+    ]
 }
+
+# Flatten list for use in leaderboards
+ALL_TRADERS = [(tid, name) for country in RANKING_TRADERS.values() for tid, name in country]
 
 # Flattened list (all traders, still useful in leaderboards/rankings)
 RANKING_TRADERS = [trader for country, traders in COUNTRY_TRADERS.items() for trader in traders]
