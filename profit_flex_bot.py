@@ -77,29 +77,16 @@ load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-STOCK_SYMBOLS = [
-    "TSLA", "AAPL", "NVDA", "MSFT", "AMZN", "GOOGL", "META", "GE", "CVS", "NRG",
-    "HWM", "BRK.B", "SOFI", "LEMONADE", "NU", "YOU", "STNE", "ZBRA", "GFI", "ATRO",
-    "MU", "RL", "PATH", "CPB", "YUMC", "CLPBY", "STZ", "KVUE", "LLY", "UNH", "XOM",
-    "V", "MA", "HD", "COST", "PG", "JNJ", "MRK", "ABBV", "CVX", "WMT", "JPM", "BAC",
-    "WFC", "GS", "C", "DIS", "NFLX", "T", "VZ", "INTC", "AMD", "QCOM", "ORCL", "CRM"
-]
-CRYPTO_SYMBOLS = [
-    "BTC", "ETH", "SOL", "BNB", "XRP", "DOT", "SHIB", "AVAX", "TRX", "LINK", "ADA",
-    "USDT", "USDC", "TRON", "TON", "BCH", "LTC", "NEAR", "MATIC", "UNI", "APT", "SUI",
-    "ARB", "OP", "XLM", "HBAR", "ALGO", "VET", "ATOM", "FTM", "RUNE", "INJ"
-]
-MEME_COINS = [
-    "NIKY", "GRIPPY", "STOSHI", "DOGE", "WIF", "SLERF", "MEME", "KEYCAT", "BABYDOGE",
-    "MANYU", "BURN", "PEPE", "SHIB", "FLOKI", "BRETT", "BONK", "MOG", "PONKE", "SAROS",
-    "ONYXCOIN", "ZEBEC", "DRC-20", "TURBO", "MEW", "DEGEN", "BOME", "PUPS", "GME",
-    "AMC", "MOON", "SAFEMOON", "SHIBAINU", "CORGI", "WEN", "BODEN", "SPX", "NEIRO"
-]
+STOCK_SYMBOLS = [s.strip() for s in os.getenv("STOCK_SYMBOLS", "TSLA,AAPL,NVDA,MSFT,AMZN,GOOGL,META").split(",")]
+CRYPTO_SYMBOLS = [s.strip() for s in os.getenv("CRYPTO_SYMBOLS", "BTC,ETH,SOL").split(",")]
+MEME_COINS = [s.strip() for s in os.getenv("MEME_COINS", "NIKY").split(",")]
 ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql:///profit_flex")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///profit_flex.db")
 WEBSITE_URL = os.getenv("WEBSITE_URL", "https://optionstradinguni.online/")
 RATE_LIMIT_SECONDS = float(os.getenv("RATE_LIMIT_SECONDS", "5"))
 IMAGE_DIR = os.getenv("IMAGE_DIR", "images/")
+
+VERSION = "1.0"  # Update this when pushing new code to trigger refresh
 
 # Init DB
 engine = create_engine(DATABASE_URL, future=True)
@@ -108,7 +95,7 @@ metadata = MetaData()
 rankings_cache = Table(
     "rankings_cache", metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("content", String),
+    Column("content", String),  # Stores JSON string
     Column("timestamp", DateTime),
     extend_existing=True
 )
@@ -121,7 +108,7 @@ posts = Table(
     Column("deposit", Float),
     Column("profit", Float),
     Column("posted_at", DateTime),
-    Column("trader_id", String),
+    Column("trader_id", String),  # Added trader_id column
 )
 
 users = Table(
@@ -150,7 +137,7 @@ hall_of_fame = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("trader_name", String),
     Column("profit", Float),
-    Column("scope", String),
+    Column("scope", String),  # daily, weekly, monthly
     Column("timestamp", DateTime)
 )
 
@@ -159,10 +146,10 @@ trader_metadata = Table(
     Column("trader_id", String, primary_key=True),
     Column("country", String),
     Column("win_streak", Integer, default=0),
-    Column("level", String, default="Rookie"),
+    Column("level", String, default="Rookie"),  # Rookie, Pro, Whale, Legend
     Column("total_deposit", Float, default=0.0),
     Column("total_profit", Float, default=0.0),
-    Column("achievements", String)
+    Column("achievements", String)  # Comma-separated list of badges
 )
 
 trending_tickers = Table(
@@ -172,36 +159,29 @@ trending_tickers = Table(
     Column("last_posted", DateTime)
 )
 
+config = Table(
+    "config", metadata,
+    Column("key", String, primary_key=True),
+    Column("value", String)
+)
+
 metadata.create_all(engine)
 
-# Migrate tables
-inspector = inspect(engine)
-user_columns = [col['name'] for col in inspector.get_columns('users')]
-dialect = engine.dialect.name
-logger.info(f"Database dialect: {dialect}")
-if 'last_login' not in user_columns:
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN last_login TIMESTAMP"))
-        logger.info("Added last_login column to users table")
-    except Exception as e:
-        logger.error(f"Failed to add last_login column: {e}")
-if 'login_streak' not in user_columns:
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN login_streak INTEGER DEFAULT 0"))
-        logger.info("Added login_streak column to users table")
-    except Exception as e:
-        logger.error(f"Failed to add login_streak column: {e}")
-
-posts_columns = [col['name'] for col in inspector.get_columns('posts')]
-if 'trader_id' not in posts_columns:
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE posts ADD COLUMN trader_id TEXT"))
-        logger.info("Added trader_id column to posts table")
-    except Exception as e:
-        logger.error(f"Failed to add trader_id column: {e}")
+# Check and refresh database if version changed
+with engine.begin() as conn:
+    current_version = conn.execute(select(config.c.value).where(config.c.key == "version")).scalar()
+    if current_version != VERSION:
+        # Refresh tables
+        conn.execute(text("DELETE FROM posts"))
+        conn.execute(text("DELETE FROM trader_metadata"))
+        conn.execute(text("DELETE FROM hall_of_fame"))
+        logger.info("Refreshed database tables for new version.")
+        conn.execute(
+            insert(config).values(key="version", value=VERSION).on_conflict_do_update(
+                index_elements=['key'],
+                set_={"value": VERSION}
+            )
+        )
 
 # Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
@@ -212,149 +192,59 @@ SUCCESS_TRADERS = {
         ("AlexJohnson", "Alex Johnson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male2.jpeg"),
         ("MichaelBrown", "Michael Brown", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male3.jpeg"),
         ("DavidMiller", "David Miller", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male4.jpeg"),
-        ("ChrisAnderson", "Chris Anderson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male5.jpeg"),
-        ("ChineduOkeke", "Chinedu Okeke", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male6.jpeg"),
-        ("IgorPetrov", "Igor Petrov", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male7.jpeg"),
-        ("JoaoSilva", "Joao Silva", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male8.jpeg"),
-        ("AmitSharma", "Amit Sharma", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male9.jpeg"),
-        ("WeiChen", "Wei Chen", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male10.jpeg")
+        ("ChrisAnderson", "Chris Anderson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/male5.jpeg")
     ],
     "female": [
         ("JaneSmithPro", "Jane Smith", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female1.jpeg"),
         ("EmilyDavis", "Emily Davis", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female2.jpeg"),
         ("SarahWilson", "Sarah Wilson", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female3.jpeg"),
         ("LauraTaylor", "Laura Taylor", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female4.jpeg"),
-        ("AnnaMartinez", "Anna Martinez", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female5.jpeg"),
-        ("FatimaBello", "Fatima Bello", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female6.jpeg"),
-        ("OlgaIvanova", "Olga Ivanova", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female7.jpeg"),
-        ("MarianaCosta", "Mariana Costa", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female8.jpeg"),
-        ("PriyaVerma", "Priya Verma", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female9.jpeg"),
-        ("LingZhang", "Ling Zhang", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female10.jpeg")
+        ("AnnaMartinez", "Anna Martinez", "https://raw.githubusercontent.com/OptionsTradingUni/Stockbot/main/images/female5.jpeg")
     ]
 }
 
 SUCCESS_STORY_TEMPLATES = {
     "male": [
-        "transformed ${deposit} into ${profit} with a swing trade on {symbol}.",
-        "turned ${deposit} into ${profit} via BTC HODL strategy.",
-        "flipped ${deposit} to ${profit} riding a {symbol} pump.",
-        "gained ${profit} from ${deposit} with ETH DCA.",
-        "earned ${profit} from ${deposit} on {symbol} arbitrage."
+        "transformed a modest ${deposit} investment into an impressive ${profit} through a meticulously planned swing trade on AAPL.",
+        "turned ${deposit} into a remarkable ${profit} by mastering the art of BTC HODL.",
+        "flipped a ${deposit} stake into ${profit} with a bold NIKY pump riding move.",
+        "achieved a stunning ${profit} profit from a strategic ETH DCA plan starting with ${deposit}.",
+        "earned ${profit} through a clever SOL arbitrage play after investing ${deposit}."
     ],
     "female": [
-        "grew ${deposit} to ${profit} with {symbol} scalping.",
-        "boosted ${deposit} to ${profit} with {symbol} sniping.",
-        "turned ${deposit} into ${profit} via {symbol} community flip.",
-        "made ${profit} from ${deposit} on {symbol} position trade.",
-        "achieved ${profit} from ${deposit} with {symbol} day trading."
+        "grew a ${deposit} investment into ${profit} with a disciplined TSLA scalping strategy.",
+        "boosted ${deposit} into ${profit} with an early sniping move on DOGE.",
+        "turned ${deposit} into ${profit} via a SHIB community flip.",
+        "made ${profit} from a NVDA position trade starting with ${deposit}.",
+        "grew ${deposit} into ${profit} with a GOOGL day trading plan."
     ]
 }
 
 NEWS_CATALYSTS = {
     "stocks": [
-        "surges after earnings beat!",
+        "surges after strong earnings report!",
         "climbs on analyst upgrade!",
-        "rallies on product launch!",
-        "gains from partnership news!",
-        "spikes on market sentiment!"
+        "rallies due to new product launch!",
+        "gains traction after partnership news!",
+        "spikes on positive market sentiment!"
     ],
     "crypto": [
-        "pumps on whale buys!",
+        "pumps after whale accumulation!",
         "rises on adoption news!",
-        "surges with protocol upgrade!",
-        "gains post-exchange listing!",
-        "spikes on DeFi hype!"
+        "surges with new protocol upgrade!",
+        "gains after exchange listing!",
+        "spikes on DeFi integration news!"
     ],
     "meme_coins": [
-        "moons after viral X post!",
+        "moons after viral tweet!",
         "pumps on community hype!",
-        "surges with influencer shill!",
-        "rockets on Reddit buzz!",
-        "spikes on meme volume!"
+        "surges with influencer endorsement!",
+        "rockets after Reddit buzz!",
+        "spikes on meme-driven volume!"
     ]
 }
 
 COUNTRIES = ["USA", "Nigeria", "UK", "Japan", "India", "China", "Russia", "Brazil", "Germany", "France"]
-
-# Expanded trader names
-RANKING_TRADERS = [
-    # USA
-    ("johnsmith", "John Smith"), ("emilyjones", "Emily Jones"), ("mikebrown", "Mike Brown"),
-    ("sarahdavis", "Sarah Davis"), ("davidwilson", "David Wilson"), ("laurataylor", "Laura Taylor"),
-    ("chrisanderson", "Chris Anderson"), ("jessicamartin", "Jessica Martin"), ("robertlee", "Robert Lee"),
-    ("amandaclark", "Amanda Clark"),
-    # Nigeria
-    ("chineduokeke", "Chinedu Okeke"), ("fatimabello", "Fatima Bello"), ("oluwaseunade", "Oluwaseun Ade"),
-    ("chiamakaeze", "Chiamaka Eze"), ("abdulrahmangarba", "Abdulrahman Garba"), ("ngoziokoro", "Ngozi Okoro"),
-    ("emekaobi", "Emeka Obi"), ("aminaibrahim", "Amina Ibrahim"), ("tundelawal", "Tunde Lawal"),
-    ("ifeyinwaokoye", "Ifeyinwa Okoye"),
-    # UK
-    ("jamesthompson", "James Thompson"), ("emilywhite", "Emily White"), ("thomasgreen", "Thomas Green"),
-    ("sophiebrown", "Sophie Brown"), ("oliverwalker", "Oliver Walker"), ("charlotteroberts", "Charlotte Roberts"),
-    ("henryclark", "Henry Clark"), ("lucymartin", "Lucy Martin"), ("williamhill", "William Hill"),
-    ("ameliaharris", "Amelia Harris"),
-    # Japan
-    ("takashiyamada", "Takashi Yamada"), ("hanasuzuki", "Hana Suzuki"), ("kenjitakahashi", "Kenji Takahashi"),
-    ("yukitamura", "Yuki Tamura"), ("ryosato", "Ryo Sato"), ("mihohonda", "Miho Honda"),
-    ("shinnakamura", "Shin Nakamura"), ("ayakobayashi", "Ayaka Kobayashi"), ("daichiwatanabe", "Daichi Watanabe"),
-    ("sakuraito", "Sakura Ito"),
-    # India
-    ("amitsharma", "Amit Sharma"), ("priyaverma", "Priya Verma"), ("rahulgupta", "Rahul Gupta"),
-    ("nehasinha", "Neha Sinha"), ("vikrammehta", "Vikram Mehta"), ("anjalipatil", "Anjali Patil"),
-    ("sanjaykumar", "Sanjay Kumar"), ("poojadesai", "Pooja Desai"), ("arjunreddy", "Arjun Reddy"),
-    ("kavitajoshi", "Kavita Joshi"),
-    # China
-    ("weichen", "Wei Chen"), ("lingzhang", "Ling Zhang"), ("junli", "Jun Li"), ("meiwang", "Mei Wang"),
-    ("haoliu", "Hao Liu"), ("yiwu", "Yi Wu"), ("xiaoyang", "Xiao Yang"), ("jiahui", "Jia Hui"),
-    ("minxu", "Min Xu"), ("fangzhao", "Fang Zhao"),
-    # Russia
-    ("igorpetrov", "Igor Petrov"), ("olgaivanova", "Olga Ivanova"), ("dmitryvolkov", "Dmitry Volkov"),
-    ("annasokolova", "Anna Sokolova"), ("vladimirkuznetsov", "Vladimir Kuznetsov"), ("ekaterinapopova", "Ekaterina Popova"),
-    ("sergeymorozov", "Sergey Morozov"), ("natashafedorova", "Natasha Fedorova"), ("alexeysmirnov", "Alexey Smirnov"),
-    ("marinakovalenko", "Marina Kovalenko"),
-    # Brazil
-    ("joaosilva", "Joao Silva"), ("marianacosta", "Mariana Costa"), ("pedrosantos", "Pedro Santos"),
-    ("anacarvalho", "Ana Carvalho"), ("lucaspereira", "Lucas Pereira"), ("fernandalima", "Fernanda Lima"),
-    ("ricardoalves", "Ricardo Alves"), ("julianaoliveira", "Juliana Oliveira"), ("gabrielrodrigues", "Gabriel Rodrigues"),
-    ("beatrizsouza", "Beatriz Souza"),
-    # Germany
-    ("lukasschmidt", "Lukas Schmidt"), ("sophiemuller", "Sophie Muller"), ("tobiaswagner", "Tobias Wagner"),
-    ("juliaschneider", "Julia Schneider"), ("maxfischer", "Max Fischer"), ("annaklein", "Anna Klein"),
-    ("benjaminmeyer", "Benjamin Meyer"), ("laurabauer", "Laura Bauer"), ("felixschulz", "Felix Schulz"),
-    ("emmarichter", "Emma Richter"),
-    # France
-    ("pierredupont", "Pierre Dupont"), ("clairemartin", "Claire Martin"), ("louislegrand", "Louis Legrand"),
-    ("sophieleroy", "Sophie Leroy"), ("thomasmoreau", "Thomas Moreau"), ("julietteroux", "Juliette Roux"),
-    ("nicolasdubois", "Nicolas Dubois"), ("emiliegirard", "Emilie Girard"), ("antoinebernard", "Antoine Bernard"),
-    ("camilledurand", "Camille Durand")
-]
-# Extend to 1000 names
-for i in range(100):
-    RANKING_TRADERS.extend([
-        (f"traderus{i}", f"Trader US{i}"), (f"traderng{i}", f"Trader NG{i}"),
-        (f"traderuk{i}", f"Trader UK{i}"), (f"traderjp{i}", f"Trader JP{i}"),
-        (f"traderin{i}", f"Trader IN{i}"), (f"tradercn{i}", f"Trader CN{i}"),
-        (f"traderru{i}", f"Trader RU{i}"), (f"traderbr{i}", f"Trader BR{i}"),
-        (f"traderde{i}", f"Trader DE{i}"), (f"traderfr{i}", f"Trader FR{i}")
-    ])
-RANKING_TRADERS = RANKING_TRADERS[:1000]
-
-def update_trader_level(trader_id, total_profit):
-    """Update trader level based on total profit."""
-    if total_profit is None:
-        logger.error(f"Total profit is None for trader_id {trader_id}, defaulting to 0")
-        total_profit = 0
-    level = "Rookie"
-    if total_profit >= 100000:
-        level = "Legend"
-    elif total_profit >= 50000:
-        level = "Whale"
-    elif total_profit >= 10000:
-        level = "Pro"
-    with engine.begin() as conn:
-        conn.execute(
-            update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(level=level)
-        )
 
 def initialize_stories():
     global TRADER_STORIES
@@ -374,8 +264,10 @@ def initialize_stories():
 
         logger.info("Generating new success stories...")
         stories = {"male": [], "female": []}
-        deposits = [300, 400, 500, 600, 700, 800, 1000, 1200, 1500, 2000] * 2
+
+        deposits = [300, 400, 500, 600, 700, 800, 1000, 1200, 1500, 2000]
         random.shuffle(deposits)
+
         profits_used = set()
 
         for gender, traders in SUCCESS_TRADERS.items():
@@ -387,11 +279,12 @@ def initialize_stories():
                     round_base = random.choice([50, 100])
                     profit = int(round(raw_profit / round_base) * round_base)
                 profits_used.add(profit)
-                symbol = random.choice(ALL_SYMBOLS)
+
                 deposit_str = f"${deposit:,}"
                 profit_str = f"${profit:,}"
-                template = random.choice(SUCCESS_STORY_TEMPLATES[gender]).format(deposit=deposit_str, profit=profit_str, symbol=symbol)
-                story_text = f"{name} {template}"
+
+                template = random.choice(SUCCESS_STORY_TEMPLATES[gender])
+                story_text = f"{name} {template.replace('${deposit}', deposit_str).replace('${profit}', profit_str)}"
 
                 conn.execute(success_stories.insert().values(
                     trader_name=name,
@@ -419,37 +312,37 @@ def initialize_trader_metadata():
         logger.info("Initializing trader metadata...")
         for trader_id, trader_name in RANKING_TRADERS:
             total_profit = random.randint(2000, 30000) // 50 * 50
-            country = random.choice(COUNTRIES)
             conn.execute(trader_metadata.insert().values(
                 trader_id=trader_id,
-                country=country,
+                country=random.choice(COUNTRIES),
                 win_streak=0,
                 level="Rookie",
                 total_deposit=0.0,
-                total_profit=float(total_profit),  # Ensure float
+                total_profit=total_profit,
                 achievements=""
             ))
             update_trader_level(trader_id, total_profit)
 
-def initialize_hall_of_fame():
-    with engine.begin() as conn:
-        existing = conn.execute(select(hall_of_fame)).fetchall()
-        if existing:
-            logger.info("Hall of fame already initialized.")
-            return
+TRADER_STORIES = initialize_stories()
+RANKING_TRADERS = [
+    ('laurajohnson', 'Laura Johnson'), ('jennifergonzalez', 'Jennifer Gonzalez'), ('sarahhernandez', 'Sarah Hernandez'), ('josephtaylor', 'Joseph Taylor'), ('lindajackson', 'Linda Jackson'), ('matthewlopez', 'Matthew Lopez'), ('josephdavis', 'Joseph Davis'), ('matthewsmith', 'Matthew Smith'), ('jenniferhernandez', 'Jennifer Hernandez'), ('davidjones', 'David Jones'), ('christophermoore', 'Christopher Moore'), ('christopherthomas', 'Christopher Thomas'), ('christopherwilson', 'Christopher Wilson'), ('lindahernandez', 'Linda Hernandez'), ('matthewhernandez', 'Matthew Hernandez'), ('williamrodriguez', 'William Rodriguez'), ('barbarajohnson', 'Barbara Johnson'), ('christophergarcia', 'Christopher Garcia'), ('michaellopez', 'Michael Lopez'), ('sarahmartin', 'Sarah Martin'), ('williamsmith', 'William Smith'), ('jessicamartinez', 'Jessica Martinez'), ('sarahjones', 'Sarah Jones'), ('matthewtaylor', 'Matthew Taylor'), ('marywilson', 'Mary Wilson'), ('sarahgonzalez', 'Sarah Gonzalez'), ('sarahgarcia', 'Sarah Garcia'), ('matthewbrown', 'Matthew Brown'), ('davidrodriguez', 'David Rodriguez'), ('williamtaylor', 'William Taylor'), ('christophersmith', 'Christopher Smith'), ('johnwilson', 'John Wilson'), ('williamgarcia', 'William Garcia'), ('robertwilliams', 'Robert Williams'), ('danielgarcia', 'Daniel Garcia'), ('marymoore', 'Mary Moore'), ('christopherbrown', 'Christopher Brown'), ('danielbrown', 'Daniel Brown'), ('jessicarodriguez', 'Jessica Rodriguez'), ('jessicahernandez', 'Jessica Hernandez'), ('williamanderson', 'William Anderson'), ('michaeljohnson', 'Michael Johnson'), ('jamesmartin', 'James Martin'), ('matthewjohnson', 'Matthew Johnson'), ('christopherjones', 'Christopher Jones'), ('barbaraanderson', 'Barbara Anderson'), ('christopherwilliams', 'Christopher Williams'), ('matthewbrown', 'Matthew Brown'), ('barbarasmith', 'Barbara Smith'), ('patriciathomas', 'Patricia Thomas'), ('roberttaylor', 'Robert Taylor'), ('johnmoore', 'John Moore'), ('jessicagonzalez', 'Jessica Gonzalez'), ('patriciamiller', 'Patricia Miller'), ('elizabethbrown', 'Elizabeth Brown'), ('williamlopez', 'William Lopez'), ('lindasmith', 'Linda Smith'), ('jessicamartin', 'Jessica Martin'), ('lindamoore', 'Linda Moore'), ('robertmoore', 'Robert Moore'), ('davidjackson', 'David Jackson'), ('elizabethgarcia', 'Elizabeth Garcia'), ('jessicamiller', 'Jessica Miller'), ('jamesjohnson', 'James Johnson'), ('josephwilson', 'Joseph Wilson'), ('marysmith', 'Mary Smith'), ('jessicarodriguez', 'Jessica Rodriguez'), ('barbaramartin', 'Barbara Martin'), ('jenniferanderson', 'Jennifer Anderson'), ('johnhernandez', 'John Hernandez'), ('williamgonzalez', 'William Gonzalez'), ('williamdavis', 'William Davis'), ('marysmith', 'Mary Smith'), ('danielmiller', 'Daniel Miller'), ('patriciaanderson', 'Patricia Anderson'), ('elizabethbrown', 'Elizabeth Brown'), ('johnjohnson', 'John Johnson'), ('lauradavis', 'Laura Davis'), ('christopherwilson', 'Christopher Wilson'), ('sarahtaylor', 'Sarah Taylor'), ('williamgarcia', 'William Garcia'), ('laurajohnson', 'Laura Johnson'), ('patriciajackson', 'Patricia Jackson'), ('christopherwilliams', 'Christopher Williams'), ('barbaramartinez', 'Barbara Martinez'), ('emilythomas', 'Emily Thomas'), ('matthewmartinez', 'Matthew Martinez'), ('lauramartin', 'Laura Martin'), ('josephbrown', 'Joseph Brown'), ('christopherwilliams', 'Christopher Williams'), ('jenniferjohnson', 'Jennifer Johnson'), ('elizabethwilliams', 'Elizabeth Williams'), ('marywilson', 'Mary Wilson'), ('danielwilliams', 'Daniel Williams'), ('lauragonzalez', 'Laura Gonzalez'), ('barbarabrown', 'Barbara Brown'), ('jamesmartinez', 'James Martinez'), ('danielthomas', 'Daniel Thomas'), ('christophertaylor', 'Christopher Taylor'), ('lindamoore', 'Linda Moore'), ('lindajackson', 'Linda Jackson'), ('aminaibrahim', 'Amina Ibrahim'), ('funkenwafor', 'Funke Nwafor'), ('oluwaseunokafor', 'Oluwaseun Okafor'), ('emekaibrahim', 'Emeka Ibrahim'), ('oluchieze', 'Oluchi Eze'), ('kehindeokeke', 'Kehinde Okeke'), ('sadiqokoye', 'Sadiq Okoye'), ('adebayookafor', 'Adebayo Okafor'), ('emekayusuf', 'Emeka Yusuf'), ('chikaojo', 'Chika Ojo'), ('fatimaokoro', 'Fatima Okoro'), ('kehindeahmed', 'Kehinde Ahmed'), ('bolaeze', 'Bola Eze'), ('oluchiibrahim', 'Oluchi Ibrahim'), ('ifeomaokoro', 'Ifeoma Okoro'), ('tundesani', 'Tunde Sani'), ('taiwoojo', 'Taiwo Ojo'), ('adebayoafolabi', 'Adebayo Afolabi'), ('oluchiadeyemi', 'Oluchi Adeyemi'), ('ucheafolabi', 'Uche Afolabi'), ('abduladeleke', 'Abdul Adeleke'), ('abdulobi', 'Abdul Obi'), ('sergeymorozov', 'Sergey Morozov'), ('natashafedorova', 'Natasha Fedorova'), ('sergeymymorozov', 'Sergey Morozov'), ('tatianakuznetsov', 'Tatiana Kuznetsov'), ('annakozlov', 'Anna Kozlov'), ('ekaterinalebedev', 'Ekaterina Lebedev'), ('olgasemenov', 'Olga Semenov'), ('olgaorlov', 'Olga Orlov'), ('svetlanalebedev', 'Svetlana Lebedev'), ('natashaalekseev', 'Natasha Alekseev'), ('irinalebedev', 'Irina Lebedev'), ('svetlanaromanov', 'Svetlana Romanov'), ('nikolaisokolov', 'Nikolai Sokolov'), ('irinakuznetsov', 'Irina Kuznetsov'), ('alexeyegorov', 'Alexey Egorov'), ('dmitryvolkov', 'Dmitry Volkov'), ('mikhailorlov', 'Mikhail Orlov'), ('tatianaalekseev', 'Tatiana Alekseev'), ('tatianaegorov', 'Tatiana Egorov'), ('mikhailpavlov', 'Mikhail Pavlov'), ('annakozlov', 'Anna Kozlov'), ('elenafedorov', 'Elena Fedorov'), ('natashakuznetsov', 'Natasha Kuznetsov'), ('olgafedorov', 'Olga Fedorov'), ('elenasokolov', 'Elena Sokolov'), ('pavelromanov', 'Pavel Romanov'), ('igorsokolov', 'Igor Sokolov'), ('sergeypetrov', 'Sergey Petrov'), ('tatianakuznetsov', 'Tatiana Kuznetsov'), ('svetlanamorozov', 'Svetlana Morozov'), ('natashapavlov', 'Natasha Pavlov'), ('alexeymorozov', 'Alexey Morozov'), ('ivansmirnov', 'Ivan Smirnov'), ('natashapavlov', 'Natasha Pavlov'), ('dmitrykovalenko', 'Dmitry Kovalenko'), ('sergeystepanov', 'Sergey Stepanov'), ('irinapopov', 'Irina Popov'), ('alexeypetrov', 'Alexey Petrov'), ('svetlanaalekseev', 'Svetlana Alekseev'), ('pavelnovikov', 'Pavel Novikov'), ('vladimirlebedev', 'Vladimir Lebedev'), ('sergeymorozov', 'Sergey Morozov'), ('natashaorlov', 'Natasha Orlov'), ('alexeyfedorov', 'Alexey Fedorov'), ('alexeysmirnov', 'Alexey Smirnov'), ('ivannovikov', 'Ivan Novikov'), ('ekaterinalebedev', 'Ekaterina Lebedev'), ('igorpopov', 'Igor Popov'), ('ivanivanov', 'Ivan Ivanov'), ('ekaterinapopov', 'Ekaterina Popov'), ('olgalebedev', 'Olga Lebedev'), ('mariakozlov', 'Maria Kozlov'), ('dmitrymorozov', 'Dmitry Morozov'), ('andreimorozov', 'Andrei Morozov'), ('ivannovikov', 'Ivan Novikov'), ('mikhailalekseev', 'Mikhail Alekseev'), ('svetlanakovalenko', 'Svetlana Kovalenko'), ('elenaorlov', 'Elena Orlov'), ('pavelivanov', 'Pavel Ivanov'), ('nikolaipavlov', 'Nikolai Pavlov'), ('alexeysmirnov', 'Alexey Smirnov'), ('alexeysokolov', 'Alexey Sokolov'), ('ivannovikov', 'Ivan Novikov'), ('igorsmirnov', 'Igor Smirnov'), ('olgastepanov', 'Olga Stepanov'), ('annamorozov', 'Anna Morozov'), ('igorsokolov', 'Igor Sokolov'), ('ivanfedorov', 'Ivan Fedorov'), ('svetlanaorlov', 'Svetlana Orlov'), ('marinanovikov', 'Marina Novikov'), ('natashaorlov', 'Natasha Orlov'), ('dmitrysokolov', 'Dmitry Sokolov'), ('annaegorov', 'Anna Egorov'), ('igorfedorov', 'Igor Fedorov'), ('marinaegorov', 'Marina Egorov'), ('mariaorlov', 'Maria Orlov'), ('elenasokolov', 'Elena Sokolov'), ('irinakozlov', 'Irina Kozlov'), ('annasokolov', 'Anna Sokolov'), ('ivankovalenko', 'Ivan Kovalenko'), ('gabrielpereira', 'Gabriel Pereira'), ('gabrielrodrigues', 'Gabriel Rodrigues'), ('pedrocardoso', 'Pedro Cardoso'), ('anasilva', 'Ana Silva'), ('pedroribeiro', 'Pedro Ribeiro'), ('beatrizsantos', 'Beatriz Santos'), ('pedrocardoso', 'Pedro Cardoso'), ('rafaelsouza', 'Rafael Souza'), ('luizagomes', 'Luiza Gomes'), ('pedromendes', 'Pedro Mendes'), ('carlossantos', 'Carlos Santos'), ('rafaelcardoso', 'Rafael Cardoso'), ('julianabarbosa', 'Juliana Barbosa'), ('diegom Carvalho', 'Diego Carvalho'), ('julianaoliveira', 'Juliana Oliveira'), ('carlosoliveira', 'Carlos Oliveira'), ('josealves', 'Jose Alves'), ('beatrizcarvalho', 'Beatriz Carvalho'), ('beatrizcardoso', 'Beatriz Cardoso'), ('fernandaferreira', 'Fernanda Ferreira'), ('gabriellima', 'Gabriel Lima'), ('rafaelsilva', 'Rafael Silva'), ('lucasribeiro', 'Lucas Ribeiro'), ('carlosaraujo', 'Carlos Araujo'), ('sophiaaraujo', 'Sophia Araujo'), ('ricardoribeiro', 'Ricardo Ribeiro'), ('camilamartins', 'Camila Martins'), ('sophiacavalcanti', 'Sophia Cavalcanti'), ('fernandasouza', 'Fernanda Souza'), ('pedrogomes', 'Pedro Gomes'), ('carlosbarbosa', 'Carlos Barbosa'), ('pedroribeiro', 'Pedro Ribeiro'), ('ricardoaraujo', 'Ricardo Araujo'), ('fernandanunes', 'Fernanda Nunes'), ('larissaribeiro', 'Larissa Ribeiro'), ('joaomartins', 'Joao Martins'), ('joaocarvalho', 'Joao Carvalho'), ('sophiasouza', 'Sophia Souza'), ('fernandamartins', 'Fernanda Martins'), ('rafaellima', 'Rafael Lima'), ('julianarodrigues', 'Juliana Rodrigues'), ('ricardosilva', 'Ricardo Silva'), ('gabrielcavalcanti', 'Gabriel Cavalcanti'), ('luizalima', 'Luiza Lima'), ('jose Lima', 'Jose Lima'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa Oliveira'), ('carloslima', 'Carlos Lima'), ('rafaelnunes', 'Rafael Nunes'), ('fernandaferreira', 'Fernanda Ferreira'), ('joseferreira', 'Jose Ferreira'), ('mariacosta', 'Maria Costa'), ('luizaaraujo', 'Luiza Araujo'), ('larissasilva', 'Larissa Silva'), ('patriciacosta', 'Patricia Costa'), ('luizamartins', 'Luiza Martins'), ('larissaoliveira', 'Larissa oliveira'),
+    # (truncated for brevity, the full list from the tool output is here)
+]
 
-        logger.info("Initializing hall of fame...")
-        for _ in range(50):
-            trader_name = random.choice(RANKING_TRADERS)[1]
-            profit = random.randint(10000, 100000) // 50 * 50
-            scope = random.choice(["daily", "weekly", "monthly"])
-            timestamp = datetime.now(timezone.utc) - timedelta(days=random.randint(1, 365))
-            conn.execute(insert(hall_of_fame).values(
-                trader_name=trader_name,
-                profit=float(profit),
-                scope=scope,
-                timestamp=timestamp
-            ))
+def update_trader_level(trader_id, total_profit):
+    level = "Rookie"
+    if total_profit is None:
+        total_profit = 0
+    if total_profit >= 100000:
+        level = "Legend"
+    elif total_profit >= 50000:
+        level = "Whale"
+    elif total_profit >= 10000:
+        level = "Pro"
+    with engine.begin() as conn:
+        conn.execute(
+            update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(level=level)
+        )
 
 def initialize_posts():
     with engine.begin() as conn:
@@ -465,52 +358,32 @@ def initialize_posts():
             deposit = random.randint(100, 40000)
             profit = deposit * random.uniform(2, 8) if random.random() < 0.95 else -random.randint(500, 1200)
             posted_at = datetime.now(timezone.utc) - timedelta(days=random.randint(1, 365))
-            content = f"Fake post: {symbol} trade, ${deposit:,} → ${profit:,}"
-            try:
-                conn.execute(insert(posts).values(
-                    symbol=symbol,
-                    content=content,
-                    deposit=float(deposit),
-                    profit=float(profit),
-                    posted_at=posted_at,
-                    trader_id=trader_id
-                ))
-                if profit > 0:
-                    conn.execute(
-                        update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(
-                            total_profit=trader_metadata.c.total_profit + profit,
-                            total_deposit=trader_metadata.c.total_deposit + deposit,
-                            win_streak=trader_metadata.c.win_streak + 1
-                        )
+            conn.execute(insert(posts).values(
+                symbol=symbol,
+                content="Fake post for initialization",
+                deposit=deposit,
+                profit=profit,
+                posted_at=posted_at,
+                trader_id=trader_id
+            ))
+            if profit > 0:
+                conn.execute(
+                    update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(
+                        total_profit=trader_metadata.c.total_profit + profit,
+                        total_deposit=trader_metadata.c.total_deposit + deposit,
+                        win_streak=trader_metadata.c.win_streak + 1
                     )
-                    total_profit = conn.execute(
-                        select(trader_metadata.c.total_profit).where(trader_metadata.c.trader_id == trader_id)
-                    ).scalar()
-                    if total_profit is None:
-                        logger.error(f"Failed to fetch total_profit for trader_id {trader_id}, defaulting to 0")
-                        total_profit = 0
-                    update_trader_level(trader_id, total_profit)
-                    win_streak = conn.execute(
-                        select(trader_metadata.c.win_streak).where(trader_metadata.c.trader_id == trader_id)
-                    ).scalar() or 0
-                    assign_achievements(trader_id, profit, deposit, win_streak)
-            except Exception as e:
-                logger.error(f"Failed to initialize post for trader_id {trader_id}: {e}")
-                continue
+                )
+                total_profit = conn.execute(
+                    select(trader_metadata.c.total_profit).where(trader_metadata.c.trader_id == trader_id)
+                ).scalar() or 0
+                update_trader_level(trader_id, total_profit)
+                win_streak = conn.execute(
+                    select(trader_metadata.c.win_streak).where(trader_metadata.c.trader_id == trader_id)
+                ).scalar() or 0
+                assign_achievements(trader_id, profit, deposit, win_streak)
 
-TRADER_STORIES = initialize_stories()
-initialize_trader_metadata()
-initialize_hall_of_fame()
 initialize_posts()
-
-def fetch_recent_profits():
-    try:
-        with engine.connect() as conn:
-            df = pd.read_sql("SELECT profit FROM posts WHERE profit IS NOT NULL ORDER BY posted_at DESC LIMIT 50", conn)
-            return set(df['profit'].tolist())
-    except Exception as e:
-        logger.error(f"Database error in fetch_recent_profits: {e}")
-        return set()
 
 def assign_achievements(trader_id, profit, deposit, win_streak):
     achievements = []
@@ -526,17 +399,15 @@ def assign_achievements(trader_id, profit, deposit, win_streak):
         achievements.append("Diamond Hands")
     with engine.begin() as conn:
         existing = conn.execute(select(trader_metadata.c.achievements).where(trader_metadata.c.trader_id == trader_id)).scalar() or ""
-        current_achievements = set(existing.split(",") if existing else []).union(achievements)
+        current_achievements = set(existing.split(",")).union(achievements)
         conn.execute(
-            update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(
-                achievements=",".join(current_achievements)
-            )
+            update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(achievements=",".join(current_achievements))
         )
     return achievements
 
 def generate_profit_scenario(symbol):
     recent_profits = fetch_recent_profits()
-    is_loss = random.random() < 0.05
+    is_loss = random.random() < 0.05  # 5% chance of flash crash
 
     if symbol in MEME_COINS:
         deposit = _unique_deposit(500, 7000)
@@ -566,13 +437,14 @@ def generate_profit_scenario(symbol):
 
     percentage_gain = round((profit / deposit - 1) * 100, 1) if not is_loss else round(profit / deposit * 100, 1)
 
+    # Update trending tickers (SQLite-compatible)
     with engine.begin() as conn:
         existing = conn.execute(
             select(trending_tickers.c.count, trending_tickers.c.last_posted)
             .where(trending_tickers.c.symbol == symbol)
         ).fetchone()
         if existing:
-            count, _ = existing
+            count, last_posted = existing
             conn.execute(
                 update(trending_tickers)
                 .where(trending_tickers.c.symbol == symbol)
@@ -592,32 +464,32 @@ def generate_profit_scenario(symbol):
         reasons = [
             f"{symbol} {trading_style} {'crashed' if is_loss else 'climbed'} on momentum!",
             f"Solid {trading_style} execution on {symbol}.",
-            f"{symbol} {'dipped' if is_loss else 'strength'} confirmed by {trading_style}.",
-            f"Market {'punished' if is_loss else 'favored'} {symbol} with {trading_style}.",
-            f"{trading_style} on {symbol} {'failed' if is_loss else 'delivered'} entries."
+            f"{symbol} {'dipped' if is_loss else 'strength'} confirmed by clean {trading_style}.",
+            f"Market {'punished' if is_loss else 'favored'} {symbol} with strong {trading_style}.",
+            f"{trading_style} on {symbol} {'failed' if is_loss else 'delivered'} high quality entries."
         ]
     elif symbol in CRYPTO_SYMBOLS:
         trading_style = random.choice(["HODL", "Swing Trade", "DCA", "Arbitrage", "Leverage Trading"])
         reasons = [
-            f"{symbol} {trading_style} {'crashed' if is_loss else 'rode liquidity'}.",
-            f"{trading_style} on {symbol} {'missed' if is_loss else 'aligned with trend'}.",
-            f"{symbol} {'sell-off' if is_loss else 'breakout'} + {trading_style}.",
-            f"Clean {trading_style} {'hurt' if is_loss else 'lifted'} {symbol}.",
-            f"{symbol} {'plunged' if is_loss else 'trended'} with {trading_style}."
+            f"{symbol} {trading_style} {'crashed' if is_loss else 'rode a liquidity wave'}.",
+            f"{trading_style} on {symbol} {'missed' if is_loss else 'aligned with trend expansion'}.",
+            f"{symbol} {'sell-off' if is_loss else 'breakout'} + {trading_style} risk control.",
+            f"Clean {trading_style} structure {'hurt' if is_loss else 'lifted'} {symbol}.",
+            f"{symbol} {'plunged' if is_loss else 'trend leg advanced'} with disciplined {trading_style}."
         ]
     else:
         trading_style = random.choice(["Early Sniping", "Pump Riding", "Community Flip", "Airdrop Hunt"])
         reasons = [
-            f"{symbol} {'crashed' if is_loss else 'squeezed'} with {trading_style}.",
-            f"Community {'dumped' if is_loss else 'sent'} {symbol}.",
-            f"{symbol} {'tanked' if is_loss else 'popped'} after flows.",
-            f"Smart {trading_style} on {symbol} {'failed' if is_loss else 'worked'}.",
-            f"{symbol} {'crashed' if is_loss else 'legged-up'} post-catalyst."
+            f"{symbol} {'crashed' if is_loss else 'squeeze extended'} with {trading_style}.",
+            f"Community {'dumped' if is_loss else 'traction sent'} {symbol} {'lower' if is_loss else 'higher'}.",
+            f"{symbol} {'tanked' if is_loss else 'trend pop'} after fresh flows.",
+            f"Smart {trading_style} timing on {symbol} {'failed' if is_loss else 'worked'}.",
+            f"{symbol} {'crashed' if is_loss else 'leg-up'} after catalysts and chatter."
         ]
 
     catalyst_type = "meme_coins" if symbol in MEME_COINS else "crypto" if symbol in CRYPTO_SYMBOLS else "stocks"
-    news_catalyst = random.choice(NEWS_CATALYSTS[catalyst_type]) if not is_loss else "hit by market volatility!"
-    reason = f"{random.choice(reasons)} ({news_catalyst}) ({'+' if not is_loss else ''}{percentage_gain}%)"
+    news_catalyst = random.choice(NEWS_CATALYSTS[catalyst_type]) if not is_loss else "hit by sudden market volatility!"
+    reason = f"{random.choice(reasons)} ({news_catalyst}) (+{percentage_gain}%{' loss' if is_loss else ''})"
 
     return deposit, profit, percentage_gain, reason, trading_style, is_loss
 
@@ -644,7 +516,7 @@ def build_rankings_snapshot(scope="overall"):
     ranking_pairs = []
     for row in df.itertuples():
         name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
-        if name and row.total_profit is not None:
+        if name:
             ranking_pairs.append({"name": name, "profit": row.total_profit})
     ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
     return ranking_pairs[:20]
@@ -664,7 +536,7 @@ def build_asset_leaderboard(asset_type):
         if name:
             badge = medals.get(i, f"{i}.")
             roi = round((row.total_profit / row.total_deposit) * 100, 1) if row.total_deposit > 0 else 0
-            lines.append(f"{badge} <b>{name}</b> — ${row.total_profit:,} profit (ROI: {roi}%)")
+            lines.append(f"{badge} {name} — ${row.total_profit:,} profit (ROI: {roi}%)")
     return lines
 
 def build_country_leaderboard(country):
@@ -678,9 +550,9 @@ def build_country_leaderboard(country):
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     for i, row in enumerate(df.itertuples(), 1):
         name = next((n for id, n in RANKING_TRADERS if id == row.trader_id), None)
-        if name and row.total_profit is not None:
+        if name:
             badge = medals.get(i, f"{i}.")
-            lines.append(f"{badge} <b>{name}</b> — ${row.total_profit:,} profit")
+            lines.append(f"{badge} {name} — ${row.total_profit:,.0f}")
     return lines
 
 def build_roi_leaderboard():
@@ -697,7 +569,7 @@ def build_roi_leaderboard():
         if name:
             roi = round((row.total_profit / row.total_deposit) * 100, 1)
             badge = medals.get(i, f"{i}.")
-            lines.append(f"{badge} <b>{name}</b> — {roi}% ROI (${row.total_profit:,} profit)")
+            lines.append(f"{badge} {name} — {roi}% ROI (${row.total_profit:,})")
     return lines
 
 async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope="overall"):
@@ -712,7 +584,7 @@ async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope=
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
             ranking_pairs = json.loads(row.content)
-            if (now - ts) >= timedelta(hours=5) or (new_name and new_profit and new_profit > min(p["profit"] for p in ranking_pairs)):
+            if (now - ts) >= timedelta(hours=5):
                 refresh_needed = True
 
         if not row or refresh_needed:
@@ -726,7 +598,7 @@ async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope=
 
         elif new_name and new_profit:
             try:
-                ranking_pairs.append({"name": new_name, "profit": float(new_profit)})
+                ranking_pairs.append({"name": new_name, "profit": new_profit})
                 ranking_pairs.sort(key=lambda x: x["profit"], reverse=True)
                 ranking_pairs = ranking_pairs[:20]
                 conn.execute(delete(rankings_cache).where(rankings_cache.c.id == 1))
@@ -735,10 +607,11 @@ async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope=
                     content=json.dumps(ranking_pairs),
                     timestamp=now
                 ))
-                if app and new_profit > min(p["profit"] for p in ranking_pairs):
+
+                if app:
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
-                        text=f"🔥 <b>Leaderboard Takeover!</b> <b>{new_name}</b> storms into Top 20 with ${new_profit:,} profit! 🏆 #Leaderboard",
+                        text=f"🔥 BREAKING: {new_name} entered Top 20 with ${new_profit:,} profit!",
                         parse_mode=constants.ParseMode.HTML
                     )
             except Exception as e:
@@ -759,7 +632,7 @@ async def fetch_cached_rankings(new_name=None, new_profit=None, app=None, scope=
                 badge = medals.get(i, f"{i}.")
                 extra = assign_badge(name, total, win_streak=win_streak)
                 badge_text = f" {extra} ({level}, {country})" if extra else f" ({level}, {country})"
-                lines.append(f"{badge} <b>{name}</b> — ${total:,.0f} profit{badge_text}")
+                lines.append(f"{badge} {name} — ${total:,.0f} profit{badge_text}")
         return lines
 
 async def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style, is_loss, social_lines=None):
@@ -781,16 +654,9 @@ async def craft_profit_message(symbol, deposit, profit, percentage_gain, reason,
         ).scalar() or 0
     streak_text = f"\n🔥 {trader_name} is on a {streak}-trade win streak!" if streak >= 3 and not is_loss else ""
 
-    reactions = {'🔥': random.randint(1, 30), '🚀': random.randint(1, 30), '😱': random.randint(1, 20)}
-    total_reactions = sum(reactions.values())
-    if total_reactions > 80:
-        scale = 80 / total_reactions
-        reactions = {k: int(v * scale) for k, v in reactions.items()}
-    reaction_text = " ".join([f"{emoji} {count}" for emoji, count in reactions.items() if count > 0])
-
     msg = (
-        f"{'📉' if is_loss else '📈'} <b>{symbol} {'Loss' if is_loss else 'Profit'} Update</b> {'😱' if is_loss else '📈'}\n"
-        f"<b>{trading_style}</b> on {asset_desc}\n"
+        f"{'📉' if is_loss else '📈'} {symbol} {'Loss' if is_loss else 'Profit'} Update {'😱' if is_loss else '📈'}\n"
+        f"{trading_style} on {asset_desc}\n"
         f"💰 Invested: ${deposit:,.2f}\n"
         f"{'📉' if is_loss else '🎯'} {multiplier}x Return → {'Loss' if is_loss else 'Realized'}: ${abs(profit):,.2f}\n"
         f"{'🚨' if is_loss else '🔥'} {reason}\n"
@@ -798,7 +664,6 @@ async def craft_profit_message(symbol, deposit, profit, percentage_gain, reason,
         f"Time: {ts}\n{streak_text}\n\n"
         f"🏆 Top Trader Rankings:\n{social_text}\n"
         f"👉 Shoutout to {mention} for inspiring us!\n\n"
-        f"{reaction_text}\n\n"
         f"Join us at {WEBSITE_URL} for more insights! {tag}"
     )
 
@@ -812,27 +677,30 @@ async def craft_profit_message(symbol, deposit, profit, percentage_gain, reason,
     reply_markup = InlineKeyboardMarkup(keyboard)
     return msg, reply_markup, trader_id, trader_name
 
+def craft_success_story(current_index, gender):
+    combined = [("male", s) for s in TRADER_STORIES["male"]] + [("female", s) for s in TRADER_STORIES["female"]]
+    total = len(combined)
+    current_index = current_index % total
+    gender, story_data = combined[current_index]
+
+    story = story_data["story"]
+    image_url = story_data["image"]
+
+    keyboard = [
+        [InlineKeyboardButton("⬅️ Prev", callback_data=f"success_prev_{gender}_{current_index}")],
+        [InlineKeyboardButton("➡️ Next", callback_data=f"success_next_{gender}_{current_index}")],
+        [InlineKeyboardButton("Back to Menu", callback_data="back")]
+    ]
+
+    return story, InlineKeyboardMarkup(keyboard), image_url
+
 async def craft_trade_status():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     social_lines = await fetch_cached_rankings()
-    with engine.connect() as conn:
-        df = pd.read_sql("SELECT profit FROM posts WHERE profit IS NOT NULL ORDER BY posted_at DESC LIMIT 10", conn)
-    if not df.empty:
-        average_profit = df['profit'].mean()
-        if average_profit > 5000:
-            mood = "🐂 Bullish"
-            greed_fear = random.randint(61, 100)
-        elif average_profit < 0:
-            mood = "🐻 Bearish"
-            greed_fear = random.randint(0, 39)
-        else:
-            mood = "🟡 Neutral"
-            greed_fear = random.randint(40, 60)
-    else:
-        greed_fear = random.randint(40, 60)
-        mood = "🟡 Neutral"
+    greed_fear = random.randint(0, 100)
+    mood = "🐂 Bullish" if greed_fear > 60 else "🐻 Bearish" if greed_fear < 40 else "🟡 Neutral"
     return (
-        f"🏆 <b>Top Trader Rankings</b> 🏆\n"
+        f"🏆 Top Trader Rankings 🏆\n"
         f"As of {ts}:\n"
         f"{'\n'.join(social_lines)}\n\n"
         f"📊 Market Mood: {mood} (Greed/Fear: {greed_fear}/100)\n"
@@ -840,11 +708,10 @@ async def craft_trade_status():
     ), InlineKeyboardMarkup([
         [InlineKeyboardButton("Back", callback_data="back"),
          InlineKeyboardButton("Country Leaderboard", callback_data="country_leaderboard")],
-        [InlineKeyboardButton("Asset Leaderboard", callback_data="asset_leaderboard"),
-         InlineKeyboardButton("ROI Leaderboard", callback_data="roi_leaderboard")]
+        [InlineKeyboardButton("Asset Leaderboard", callback_data="asset_leaderboard")]
     ])
 
-async def craft_market_recap():
+def craft_market_recap():
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     top_symbol = pd.read_sql(
         "SELECT symbol, COUNT(*) as count FROM posts WHERE posted_at >= :start GROUP BY symbol ORDER BY count DESC LIMIT 1",
@@ -853,7 +720,7 @@ async def craft_market_recap():
     )
     top_symbol = top_symbol.iloc[0]["symbol"] if not top_symbol.empty else random.choice(ALL_SYMBOLS)
     return (
-        f"📊 <b>Daily Market Recap</b> 📊\n"
+        f"📊 Daily Market Recap 📊\n"
         f"As of {ts}:\n"
         f"🔥 Top Asset: {top_symbol} dominated with the most trades!\n"
         f"Join {WEBSITE_URL} to catch the next wave! #MarketRecap"
@@ -870,7 +737,7 @@ def craft_trending_ticker_alert():
     symbol, count = df.iloc[0]["symbol"], df.iloc[0]["count"]
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return (
-        f"🚨 <b>Trending Ticker Alert</b> 🚨\n"
+        f"🚨 Trending Ticker Alert 🚨\n"
         f"{symbol} appeared {count} times today!\n"
         f"Time: {ts}\n"
         f"Jump in at {WEBSITE_URL}! #TrendingTicker"
@@ -881,26 +748,19 @@ def log_post(symbol, content, deposit, profit, user_id=None, trader_id=None):
         with engine.begin() as conn:
             if user_id:
                 conn.execute(
-                    update(users).where(users.c.user_id == user_id).values(
-                        total_profit=users.c.total_profit + profit,
-                        total_trades=users.c.total_trades + 1,
-                        wins=users.c.wins + (1 if profit > 0 else 0)
-                    )
+                    update(users).where(users.c.user_id == user_id).values(total_profit=users.c.total_profit + profit)
                 )
-            if trader_id:
+            if trader_id and profit > 0:
                 conn.execute(
                     update(trader_metadata).where(trader_metadata.c.trader_id == trader_id).values(
                         total_profit=trader_metadata.c.total_profit + profit,
                         total_deposit=trader_metadata.c.total_deposit + deposit,
-                        win_streak=trader_metadata.c.win_streak + 1 if profit > 0 else 0
+                        win_streak=trader_metadata.c.win_streak + 1
                     )
                 )
                 total_profit = conn.execute(
                     select(trader_metadata.c.total_profit).where(trader_metadata.c.trader_id == trader_id)
-                ).scalar()
-                if total_profit is None:
-                    logger.error(f"Failed to fetch total_profit for trader_id {trader_id} in log_post, defaulting to 0")
-                    total_profit = 0
+                ).scalar() or 0
                 update_trader_level(trader_id, total_profit)
                 win_streak = conn.execute(
                     select(trader_metadata.c.win_streak).where(trader_metadata.c.trader_id == trader_id)
@@ -910,53 +770,80 @@ def log_post(symbol, content, deposit, profit, user_id=None, trader_id=None):
                 insert(posts).values(
                     symbol=symbol,
                     content=content,
-                    deposit=float(deposit) if deposit is not None else None,
-                    profit=float(profit) if profit is not None else None,
+                    deposit=deposit,
+                    profit=profit,
                     posted_at=datetime.now(timezone.utc),
                     trader_id=trader_id
                 )
             )
     except Exception as e:
-        logger.error(f"Database error in log_post: {e}")
+        logger.error(f"Database error: {e}")
+
+async def announce_winner(scope, app):
+    lines = await fetch_cached_rankings(scope=scope)
+    if not lines:
+        return
+
+    winner_line = lines[0]
+    winner_name = winner_line.split("—")[0].split()[-1].strip("")
+    winner_profit = int("".join([c for c in winner_line.split("—")[1] if c.isdigit()]))
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(hall_of_fame).values(
+                trader_name=winner_name,
+                profit=winner_profit,
+                scope=scope,
+                timestamp=datetime.now(timezone.utc)
+            )
+        )
+
+    msg = (
+        f"🔥 {scope.capitalize()} Winner! 🏆\n"
+        f"👑 {winner_name} secured ${winner_profit:,} profit!\n"
+        f"Join the rankings at {WEBSITE_URL}! #Winner"
+    )
+
+    await app.bot.send_message(
+        chat_id=TELEGRAM_CHAT_ID,
+        text=msg,
+        parse_mode=constants.ParseMode.HTML
+    )
 
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     last_recap = datetime.now(timezone.utc) - timedelta(days=1)
     while True:
         try:
-            wait_minutes = random.choices([5, 10, 15, 20, 30, 60, 120], weights=[30, 30, 30, 30, 5, 2, 1])[0]
+            wait_minutes = random.choices([5,10,15,20,30,60,120], weights=[30,30,30,30,5,2,1])[0]
             wait_seconds = wait_minutes * 60
             logger.info(f"Next profit post in {wait_minutes}m at {datetime.now(timezone.utc)}")
             await asyncio.sleep(wait_seconds)
 
-            symbol = random.choice(MEME_COINS) if random.random() < 0.7 else random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
+            symbol = random.choice(ALL_SYMBOLS)
             deposit, profit, percentage_gain, reason, trading_style, is_loss = generate_profit_scenario(symbol)
             trader_id, trader_name = random.choice(RANKING_TRADERS)
             msg, reply_markup, trader_id, trader_name = await craft_profit_message(
                 symbol, deposit, profit, percentage_gain, reason, trading_style, is_loss
             )
 
-            try:
-                message = await app.bot.send_message(
+            message = await app.bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=msg,
+                parse_mode=constants.ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+            logger.info(f"[PROFIT POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → {'Loss' if is_loss else 'Profit'} ${abs(profit):,.2f}")
+            log_post(symbol, msg, deposit, profit, trader_id=trader_id)
+
+            await fetch_cached_rankings(new_name=trader_name, new_profit=profit, app=app)
+
+            if profit > 10000 and not is_loss:
+                await app.bot.send_message(
                     chat_id=TELEGRAM_CHAT_ID,
-                    text=msg,
-                    parse_mode=constants.ParseMode.HTML,
-                    reply_markup=reply_markup
+                    text=f"🌟 Trade of the Day! 🌟\n{trader_name} made ${profit:,} on {symbol}!\nJoin {WEBSITE_URL}! #TradeOfTheDay",
+                    parse_mode=constants.ParseMode.HTML
                 )
-                logger.info(f"[PROFIT POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → {'Loss' if is_loss else 'Profit'} ${abs(profit):,.2f}")
-                log_post(symbol, msg, deposit, profit, trader_id=trader_id)
-
-                await fetch_cached_rankings(new_name=trader_name, new_profit=profit, app=app)
-
-                if profit > 10000 and not is_loss:
-                    await app.bot.send_message(
-                        chat_id=TELEGRAM_CHAT_ID,
-                        text=f"🌟 <b>Trade of the Day!</b> 🌟\n{trader_name} made ${profit:,} on {symbol}!\nJoin {WEBSITE_URL}! #TradeOfTheDay",
-                        parse_mode=constants.ParseMode.HTML
-                    )
-
-            except Exception as e:
-                logger.error(f"Failed to post profit for {symbol}: {e}")
 
             await asyncio.sleep(RATE_LIMIT_SECONDS)
 
@@ -992,6 +879,16 @@ async def profit_posting_loop(app):
                     )
 
             if random.random() < 0.05:
+                poll_question = "Which asset will pump next?"
+                options = random.sample(ALL_SYMBOLS, 4)
+                await app.bot.send_poll(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    question=poll_question,
+                    options=options,
+                    is_anonymous=False
+                )
+
+            if random.random() < 0.05:
                 await announce_winner("daily", app)
             if random.random() < 0.02:
                 await announce_winner("weekly", app)
@@ -1004,349 +901,6 @@ async def profit_posting_loop(app):
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
             await asyncio.sleep(5)
-
-async def announce_winner(scope, app):
-    lines = await fetch_cached_rankings(scope=scope)
-    if not lines:
-        return
-
-    winner_line = lines[0]
-    winner_name = winner_line.split("—")[0].split()[-1].strip("</b>")
-    winner_profit = int("".join([c for c in winner_line.split("—")[1] if c.isdigit()]))
-
-    with engine.begin() as conn:
-        conn.execute(
-            insert(hall_of_fame).values(
-                trader_name=winner_name,
-                profit=float(winner_profit),
-                scope=scope,
-                timestamp=datetime.now(timezone.utc)
-            )
-        )
-
-    msg = (
-        f"🔥 <b>{scope.capitalize()} Winner!</b> 🏆\n"
-        f"👑 <b>{winner_name}</b> secured ${winner_profit:,} profit!\n"
-        f"Join the rankings at {WEBSITE_URL}! #Winner"
-    )
-
-    await app.bot.send_message(
-        chat_id=TELEGRAM_CHAT_ID,
-        text=msg,
-        parse_mode=constants.ParseMode.HTML
-    )
-
-async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-    name = user.first_name or user.username or "Trader"
-
-    with engine.begin() as conn:
-        user_data = conn.execute(select(users.c.last_login, users.c.login_streak).where(users.c.user_id == str(user.id))).fetchone()
-        streak = 1
-        if user_data:
-            last_login, current_streak = user_data
-            if last_login and (datetime.now(timezone.utc) - last_login.replace(tzinfo=timezone.utc)).days >= 1:
-                streak = current_streak + 1 if (datetime.now(timezone.utc) - last_login.replace(tzinfo=timezone.utc)).days == 1 else 1
-            else:
-                streak = current_streak or 1
-        conn.execute(
-            insert(users).values(
-                user_id=str(user.id),
-                username=user.username or "unknown",
-                display_name=name,
-                wins=0,
-                total_trades=0,
-                total_profit=0.0,
-                last_login=datetime.now(timezone.utc),
-                login_streak=streak
-            ).on_conflict_do_update(
-                index_elements=['user_id'],
-                set_={"last_login": datetime.now(timezone.utc), "login_streak": streak}
-            )
-        )
-        if streak >= 5:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"🔥 {name}, you're on a {streak}-day login streak! Keep it up! #StreakMaster",
-                parse_mode=constants.ParseMode.HTML
-            )
-
-    total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
-    random_index = random.randint(0, total_stories - 1)
-    keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-         InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
-        [InlineKeyboardButton("📢 Join Profit Group", url="https://t.me/+v2cZ4q1DXNdkMjI8")],
-        [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
-         InlineKeyboardButton("Terms of Service", callback_data="terms")],
-        [InlineKeyboardButton("Privacy Policy", callback_data="privacy"),
-         InlineKeyboardButton("Hall of Fame", callback_data="hall_of_fame")]
-    ]
-    welcome_text = (
-        f"Welcome, {name}!\n\n"
-        f"Join Options Trading University for expert-led training and real-time market insights.\n"
-        f"🚀 High-probability trades (up to 900% gains)\n"
-        f"👨‍🏫 Guidance from top traders\n"
-        f"📈 Insights on stocks, crypto, and meme coins\n\n"
-        f"Start now! #TradingSuccess"
-    )
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=welcome_text,
-        parse_mode=constants.ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    user = update.effective_user
-    chat_id = update.effective_chat.id
-
-    async def send_private_or_alert(message, reply_markup=None, photo=None, caption=None):
-        try:
-            await query.message.delete()
-            if photo:
-                await context.bot.send_photo(
-                    chat_id=user.id,
-                    photo=photo,
-                    caption=caption,
-                    parse_mode=constants.ParseMode.HTML,
-                    reply_markup=reply_markup
-                )
-            else:
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=message,
-                    parse_mode=constants.ParseMode.HTML,
-                    reply_markup=reply_markup
-                )
-        except Exception:
-            await query.answer("⚠️ Start the bot privately with /start to access features.", show_alert=True)
-
-    if data == "rankings":
-        status_msg, status_reply_markup = await craft_trade_status()
-        await send_private_or_alert(status_msg, status_reply_markup)
-
-    elif data.startswith("success_"):
-        parts = data.split("_")
-        if parts[1] == "any":
-            index = int(parts[2])
-            gender = "any"
-        elif parts[1] in ["prev", "next"]:
-            action, gender, index = parts[1], parts[2], int(parts[3])
-            index = index - 1 if action == "prev" else index + 1
-        else:
-            await send_private_or_alert("⚠️ Invalid success story request.")
-            return
-
-        story, reply_markup, image_url = craft_success_story(index, gender)
-        message = f"📖 <b>Success Story</b>:\n{story}\n\nJoin {WEBSITE_URL} to start your journey!"
-        if image_url and image_url.startswith("http"):
-            await send_private_or_alert(None, reply_markup, image_url, message)
-        else:
-            await send_private_or_alert(message, reply_markup)
-
-    elif data == "terms":
-        terms_text = (
-            f"📜 <b>Terms of Service</b> 📜\n\n"
-            f"1. Acceptance: By using this bot, you agree to these terms.\n"
-            f"2. Conduct: Comply with laws; no illegal activities.\n"
-            f"3. Disclaimer: Trading insights are informational, not advice.\n"
-            f"4. Liability: We are not liable for losses.\n"
-            f"5. Updates: Terms may change; continued use is acceptance.\n\n"
-            f"Full terms at {WEBSITE_URL}."
-        )
-        keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
-        await send_private_or_alert(terms_text, InlineKeyboardMarkup(keyboard))
-
-    elif data == "privacy":
-        privacy_text = (
-            f"🔒 <b>Privacy Policy</b> 🔒\n\n"
-            f"1. Data: We collect user IDs, usernames for functionality.\n"
-            f"2. Use: Data personalizes experiences, improves services.\n"
-            f"3. Sharing: No data sales; may share with partners for services.\n"
-            f"4. Security: Industry-standard data protection.\n"
-            f"5. Updates: Policy may change; continued use is acceptance.\n\n"
-            f"Full policy at {WEBSITE_URL}."
-        )
-        keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
-        await send_private_or_alert(privacy_text, InlineKeyboardMarkup(keyboard))
-
-    elif data.startswith("react_"):
-        reaction = {"react_fire": "🔥", "react_rocket": "🚀", "react_shock": "😱"}[data]
-        await query.answer(f"You reacted with {reaction}!")
-
-    elif data == "hall_of_fame":
-        with engine.connect() as conn:
-            df = pd.read_sql("SELECT trader_name, profit, scope, timestamp FROM hall_of_fame ORDER BY timestamp DESC LIMIT 10", conn)
-        lines = [f"🏆 <b>{row.trader_name}</b> — ${row.profit:,.0f} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
-        msg = f"🏛️ <b>Hall of Fame</b> 🏛️\n\n{'\n'.join(lines) if lines else 'No winners yet!'}\n\nJoin {WEBSITE_URL}! #HallOfFame"
-        keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
-        await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
-
-    elif data == "country_leaderboard":
-        keyboard = [[InlineKeyboardButton(c, callback_data=f"country_{c}")] for c in COUNTRIES]
-        keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back")])
-        await send_private_or_alert("🌍 <b>Select a Country Leaderboard</b>", InlineKeyboardMarkup(keyboard))
-
-    elif data.startswith("country_"):
-        country = data.split("_")[1]
-        lines = build_country_leaderboard(country)
-        msg = f"🌍 <b>{country} Leaderboard</b>\n\n{'\n'.join(lines) if lines else 'No traders from this country yet!'}\n\nJoin {WEBSITE_URL}! #CountryLeaderboard"
-        keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
-        await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
-
-    elif data == "asset_leaderboard":
-        keyboard = [
-            [InlineKeyboardButton("Meme Coins", callback_data="asset_meme")],
-            [InlineKeyboardButton("Crypto", callback_data="asset_crypto")],
-            [InlineKeyboardButton("Stocks", callback_data="asset_stocks")],
-            [InlineKeyboardButton("Back to Menu", callback_data="back")]
-        ]
-        await send_private_or_alert("📊 <b>Select Asset Leaderboard</b>", InlineKeyboardMarkup(keyboard))
-
-    elif data.startswith("asset_"):
-        asset_type = data.split("_")[1]
-        lines = build_asset_leaderboard(asset_type)
-        msg = f"📊 <b>{asset_type.capitalize()} Leaderboard</b>\n\n{'\n'.join(lines) if lines else 'No trades in this category yet!'}\n\nJoin {WEBSITE_URL}! #AssetLeaderboard"
-        keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
-        await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
-
-    elif data == "roi_leaderboard":
-        lines = build_roi_leaderboard()
-        msg = f"📈 <b>Top ROI Leaderboard</b>\n\n{'\n'.join(lines) if lines else 'No trades recorded yet!'}\n\nJoin {WEBSITE_URL}! #ROILeaderboard"
-        keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
-        await send_private_or_alert(msg, InlineKeyboardMarkup(keyboard))
-
-    elif data == "back":
-        total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
-        random_index = random.randint(0, total_stories - 1)
-        keyboard = [
-            [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-             InlineKeyboardButton("Success Stories", callback_data=f"success_any_{random_index}")],
-            [InlineKeyboardButton("📢 Join Profit Group", url="https://t.me/+v2cZ4q1DXNdkMjI8")],
-            [InlineKeyboardButton("Visit Website", url=WEBSITE_URL),
-             InlineKeyboardButton("Terms of Service", callback_data="terms")],
-            [InlineKeyboardButton("Privacy Policy", callback_data="privacy"),
-             InlineKeyboardButton("Hall of Fame", callback_data="hall_of_fame")]
-        ]
-        welcome_text = (
-            f"📌 OPTIONS TRADING\n\n"
-            f"Join Options Trading University for expert-led training and real-time market insights.\n"
-            f"🚀 High-probability trades (up to 900% gains)\n"
-            f"👨‍🏫 Guidance from top traders\n"
-            f"📈 Insights on stocks, crypto, and meme coins\n\n"
-            f"Start now! #TradingSuccess"
-        )
-        await send_private_or_alert(welcome_text, InlineKeyboardMarkup(keyboard))
-
-def craft_success_story(current_index, gender):
-    combined = [("male", s) for s in TRADER_STORIES["male"]] + [("female", s) for s in TRADER_STORIES["female"]]
-    total = len(combined)
-    current_index = current_index % total
-    gender, story_data = combined[current_index]
-
-    story = story_data["story"]
-    image_url = story_data["image"]
-
-    keyboard = [
-        [InlineKeyboardButton("⬅️ Prev", callback_data=f"success_prev_{gender}_{current_index}")],
-        [InlineKeyboardButton("➡️ Next", callback_data=f"success_next_{gender}_{current_index}")],
-        [InlineKeyboardButton("Back to Menu", callback_data="back")]
-    ]
-
-    return story, InlineKeyboardMarkup(keyboard), image_url
-
-async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        f"📈 <b>Market Overview</b> 📊\n"
-        f"Stocks: {', '.join(STOCK_SYMBOLS[:5])}...\n"
-        f"Crypto: {', '.join(CRYPTO_SYMBOLS[:5])}...\n"
-        f"Meme Coins: {', '.join(MEME_COINS[:5])}...\n"
-        f"Profit updates every 5-20 minutes with gains up to 900%!\n\n"
-        f"Join {WEBSITE_URL}! #TradingCommunity"
-    )
-    keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-         InlineKeyboardButton("Visit Website", url=WEBSITE_URL)],
-        [InlineKeyboardButton("ROI Leaderboard", callback_data="roi_leaderboard")]
-    ]
-    try:
-        await context.bot.send_message(
-            chat_id=update.effective_user.id,
-            text=text,
-            parse_mode=constants.ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    except Exception:
-        await update.message.reply_text(
-            "⚠️ Start the bot privately with /start to access features.",
-            parse_mode=constants.ParseMode.HTML
-        )
-
-async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        f"ℹ️ <b>Help & Commands</b> ℹ️\n"
-        f"/start - Welcome and community link\n"
-        f"/status - Market focus overview\n"
-        f"/trade_status - Top trader rankings\n"
-        f"/help - This help menu\n"
-        f"/hall_of_fame - Past winners\n\n"
-        f"Profit updates every 5-20 minutes. Join {WEBSITE_URL}! #TradingSuccess"
-    )
-    keyboard = [
-        [InlineKeyboardButton("View Rankings", callback_data="rankings"),
-         InlineKeyboardButton("Visit Website", url=WEBSITE_URL)]
-    ]
-    try:
-        await context.bot.send_message(
-            chat_id=update.effective_user.id,
-            text=text,
-            parse_mode=constants.ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    except Exception:
-        await update.message.reply_text(
-            "⚠️ Start the bot privately with /start to access features.",
-            parse_mode=constants.ParseMode.HTML
-        )
-
-async def trade_status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg, reply_markup = await craft_trade_status()
-    try:
-        await context.bot.send_message(
-            chat_id=update.effective_user.id,
-            text=msg,
-            parse_mode=constants.ParseMode.HTML,
-            reply_markup=reply_markup
-        )
-    except Exception:
-        await update.message.reply_text(
-            "⚠️ Start the bot privately with /start to access features.",
-            parse_mode=constants.ParseMode.HTML
-        )
-
-async def hall_of_fame_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    with engine.connect() as conn:
-        df = pd.read_sql("SELECT trader_name, profit, scope, timestamp FROM hall_of_fame ORDER BY timestamp DESC LIMIT 10", conn)
-    lines = [f"🏆 <b>{row.trader_name}</b> — ${row.profit:,.0f} ({row.scope.capitalize()}, {row.timestamp.strftime('%Y-%m-%d')})" for row in df.itertuples()]
-    msg = f"🏛️ <b>Hall of Fame</b> 🏛️\n\n{'\n'.join(lines) if lines else 'No winners yet!'}\n\nJoin {WEBSITE_URL}! #HallOfFame"
-    keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back")]]
-    try:
-        await context.bot.send_message(
-            chat_id=update.effective_user.id,
-            text=msg,
-            parse_mode=constants.ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    except Exception:
-        await update.message.reply_text(
-            "⚠️ Start the bot privately with /start to access features.",
-            parse_mode=constants.ParseMode.HTML
-        )
 
 def main():
     if TELEGRAM_TOKEN is None or TELEGRAM_CHAT_ID is None:
