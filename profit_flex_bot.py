@@ -21,6 +21,11 @@ from sqlalchemy import select, delete, insert, update, text
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
+import io
+import matplotlib
+matplotlib.use("Agg")  # headless backend for servers
+import matplotlib.pyplot as plt
+from PIL import Image, ImageFilter, ImageDraw, ImageFont
 
 # ---- Uniqueness tracking (cooldowns) ----
 used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
@@ -691,8 +696,172 @@ def log_post(symbol, content, deposit, profit, user_id=None):
     except Exception as e:
         logger.error(f"Database error: {e}")
 
+def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
+    """
+    A compact caption for photo when your full message is too long for Telegram caption.
+    """
+    return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
+
+
+def _fake_price_path(n=40, base=100.0, vol=1.5):
+    """
+    Make a tiny 'sparkline' path for some visual vibe on the card.
+    """
+    import numpy as np
+    x = np.arange(n)
+    y = np.cumsum(np.random.normal(0, vol, n)) + base
+    y = (y - y.min()) / (y.max() - y.min() + 1e-9)  # 0..1 normalize
+    return x, y
+
+#new
+def generate_pl_image(symbol, deposit, profit, roi_percent, trader_name="Anonymous"):
+    """
+    Create a stylish P/L image that varies each time.
+    Returns a file path to a PNG image.
+    """
+    import numpy as np
+    from datetime import datetime
+
+    style = random.choice(["card", "big", "bar", "split"])
+
+    # Common palette options
+    dark_bg = "#0d1117"
+    dark_panel = "#161b22"
+    accent_options = ["#22c55e", "#3b82f6", "#f59e0b", "#a855f7", "#ef4444"]
+    accent = random.choice(accent_options)
+
+    # Canvas via matplotlib
+    if style in ("card", "big", "bar"):
+        fig, ax = plt.subplots(figsize=(6, 3.6), dpi=140)
+        fig.patch.set_facecolor(dark_bg)
+        ax.set_facecolor(dark_panel)
+        ax.axis("off")
+
+    # Title
+    if style == "card":
+        ax.text(0.5, 0.92, f"{symbol} Profit Update", ha="center", va="center",
+                fontsize=17, color="white", fontweight="bold")
+
+        # Sparkline
+        x, y = _fake_price_path(n=50, base=100.0, vol=random.uniform(0.8, 1.8))
+        ax.plot(x, y, lw=2.2, color=accent, alpha=0.85)
+        ax.fill_between(x, y, y2=y.min(), color=accent, alpha=0.12)
+
+        # Stats block
+        ax.text(0.08, 0.65, f"Deposit", fontsize=10, color="#9ca3af")
+        ax.text(0.08, 0.56, f"${deposit:,.0f}", fontsize=16, color="white", fontweight="bold")
+
+        ax.text(0.40, 0.65, f"Profit", fontsize=10, color="#9ca3af")
+        ax.text(0.40, 0.56, f"${profit:,.0f}", fontsize=16, color="#22c55e", fontweight="bold")
+
+        ax.text(0.72, 0.65, f"ROI", fontsize=10, color="#9ca3af")
+        ax.text(0.72, 0.56, f"{roi_percent:.1f}%", fontsize=16, color="#f59e0b", fontweight="bold")
+
+        ax.text(0.08, 0.20, f"Trader: {trader_name}", fontsize=11, color="#e5e7eb")
+        ax.text(0.72, 0.20, datetime.now().strftime("%Y-%m-%d %H:%M UTC"),
+                fontsize=9, color="#9ca3af", ha="right")
+
+        img_path = "pl_report.png"
+        plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
+        return img_path
+
+    elif style == "big":
+        # Big number center
+        ax.text(0.5, 0.82, f"{symbol}", ha="center", va="center",
+                fontsize=20, color="white", fontweight="bold")
+        ax.text(0.5, 0.56, f"+${profit:,.0f}", ha="center", va="center",
+                fontsize=36, color=accent, fontweight="bold")
+        ax.text(0.5, 0.38, f"ROI {roi_percent:.1f}% • Deposit ${deposit:,.0f}",
+                ha="center", va="center", fontsize=12, color="#e5e7eb")
+        ax.text(0.5, 0.18, f"Trader: {trader_name}",
+                ha="center", va="center", fontsize=11, color="#9ca3af")
+
+        # subtle glow ring
+        circle = plt.Circle((0.5, 0.56), 0.32, transform=ax.transAxes, color=accent, alpha=0.08)
+        ax.add_artist(circle)
+
+        img_path = "pl_report.png"
+        plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
+        return img_path
+
+    elif style == "bar":
+        # Bar comparing deposit vs profit
+        vals = [deposit, profit]
+        labels = ["Deposit", "Profit"]
+        bars = ax.bar(labels, vals)
+        for b, c in zip(bars, ["#3b82f6", "#22c55e"]):
+            b.set_color(c)
+        ax.spines[:].set_visible(False)
+        ax.tick_params(colors="#e5e7eb", labelsize=12)
+        ax.set_facecolor(dark_panel)
+
+        ax.text(0.5, 0.92, f"{symbol} • ROI {roi_percent:.1f}%", ha="center", va="center",
+                fontsize=16, color="white", fontweight="bold", transform=ax.transAxes)
+        ax.text(0.5, 0.84, f"Trader: {trader_name}", ha="center", va="center",
+                fontsize=10, color="#9ca3af", transform=ax.transAxes)
+
+        for i, v in enumerate(vals):
+            ax.text(i, v, f"${v:,.0f}", ha="center", va="bottom", fontsize=11, color="#e5e7eb")
+
+        img_path = "pl_report.png"
+        plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
+        return img_path
+
+    elif style == "split":
+        # PIL layout: blurred background panel + overlay text blocks
+        W, H = 900, 520
+        base = Image.new("RGB", (W, H), dark_bg)
+        panel = Image.new("RGB", (W - 80, H - 80), dark_panel)
+        panel = panel.filter(ImageFilter.GaussianBlur(0.5))
+        base.paste(panel, (40, 40))
+
+        draw = ImageDraw.Draw(base)
+        # Fonts (use default DejaVu in container)
+        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+        big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 62)
+        body_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+        small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+
+        # Title
+        draw.text((60, 58), f"{symbol} Profit Update", font=title_font, fill="white")
+        # Big profit
+        draw.text((60, 140), f"+${profit:,.0f}", font=big_font, fill=accent)
+        # Row
+        draw.text((60, 250), f"Deposit: ${deposit:,.0f}", font=body_font, fill="#e5e7eb")
+        draw.text((60, 290), f"ROI: {roi_percent:.1f}%", font=body_font, fill="#f59e0b")
+        draw.text((60, 340), f"Trader: {trader_name}", font=body_font, fill="#9ca3af")
+        draw.text((60, 400), datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+                  font=small_font, fill="#6b7280")
+
+        # Simple sparkline
+        x, y = _fake_price_path(n=80, base=100, vol=random.uniform(0.8, 2.0))
+        # map to panel area
+        import numpy as np
+        px = np.interp(x, (x.min(), x.max()), (W*0.60, W*0.92))
+        py = np.interp(y, (y.min(), y.max()), (H*0.75, H*0.45))
+        for i in range(len(px)-1):
+            draw.line((px[i], py[i], px[i+1], py[i+1]), fill=accent, width=3)
+
+        img_path = "pl_report.png"
+        base.save(img_path, format="PNG")
+        return img_path
+
+    # Fallback
+    img_path = "pl_report.png"
+    fig, ax = plt.subplots(figsize=(6, 3.6), dpi=140)
+    fig.patch.set_facecolor(dark_bg); ax.set_facecolor(dark_panel); ax.axis("off")
+    ax.text(0.5, 0.5, f"+${profit:,.0f} on {symbol}", ha="center", va="center",
+            fontsize=20, color="white", fontweight="bold")
+    plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close(fig)
+    return img_path
 # Posting Loop
-# ---------------------------
+# ================================
+# Profit Posting Loop with Images
+# ================================
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
@@ -739,7 +908,7 @@ async def profit_posting_loop(app):
             # 🏆 Try update leaderboard
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # 📢 Main profit message
+            # 📢 Main profit message (text)
             msg = (
                 f"📈 <b>{symbol} Profit Update</b>\n"
                 f"👤 Trader: {trader_name}\n"
@@ -749,11 +918,41 @@ async def profit_posting_loop(app):
                 f"🔥 {reason}\n\n"
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
-            await app.bot.send_message(
-                chat_id=TELEGRAM_CHAT_ID,
-                text=msg,
-                parse_mode=constants.ParseMode.HTML
-            )
+
+            # ✅ Post to Telegram (image + caption)
+            try:
+                img_path = generate_pl_image(
+                    symbol=symbol,
+                    deposit=deposit,
+                    profit=profit,
+                    roi_percent=percentage_gain,
+                    trader_name=trader_name
+                )
+
+                caption = msg
+                if len(msg) > 900:  # shorten if too long
+                    caption = short_highlight(symbol, profit, percentage_gain)
+
+                with open(img_path, "rb") as f:
+                    await app.bot.send_photo(
+                        chat_id=TELEGRAM_CHAT_ID,
+                        photo=f,
+                        caption=caption,
+                        parse_mode=constants.ParseMode.HTML
+                    )
+
+                if caption is not msg:  # send full message separately if shortened
+                    await app.bot.send_message(
+                        chat_id=TELEGRAM_CHAT_ID,
+                        text=msg,
+                        parse_mode=constants.ParseMode.HTML
+                    )
+
+                logger.info(f"[PROFIT POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → Profit ${profit:.2f}")
+                log_post(symbol, msg, deposit, profit)
+
+            except Exception as e:
+                logger.error(f"Failed to send profit with image: {e}")
 
             # 🚀 Hype message if leaderboard changes
             if pos:
@@ -764,8 +963,6 @@ async def profit_posting_loop(app):
                 else:
                     hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
                 await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
-
-            log_post(symbol, msg, deposit, profit)
 
         except asyncio.CancelledError:
             logger.info("Profit posting loop cancelled.")
