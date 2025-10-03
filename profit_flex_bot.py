@@ -155,6 +155,18 @@ rankings_cache = Table(
 
 metadata.create_all(engine)
 
+# -------------------------
+# RESET FUNCTION
+# -------------------------
+def reset_database():
+    """
+    Drops all tables and recreates them.
+    ⚠️ WARNING: This deletes ALL data!
+    """
+    metadata.drop_all(engine)
+    metadata.create_all(engine)
+    logger.info("✅ Database reset and recreated.")
+
 # Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
 
@@ -1154,6 +1166,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        # db 
+async def resetdb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+
+    # 🔐 Replace with your own Telegram ID so randoms can’t nuke your DB
+    if user_id != "8083574070":
+        await update.message.reply_text("🚫 You are not authorized to reset the database.")
+        return
+
+    reset_database()
+    await update.message.reply_text("✅ Database has been reset and recreated.")
 # /status handler
 async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
@@ -1235,7 +1258,8 @@ def main():
     app.add_handler(CommandHandler("help", help_handler))
     app.add_handler(CommandHandler("trade_status", trade_status_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
-
+    app.add_handler(CommandHandler("resetdb", resetdb_handler))
+    
     async def on_startup(app):
         app.create_task(profit_posting_loop(app))
         logger.info("Profit posting task scheduled on startup.")
