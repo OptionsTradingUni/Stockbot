@@ -13,6 +13,7 @@ import os
 import random
 import asyncio
 import logging
+from sqlalchemy import text
 from sqlalchemy import select, delete, insert
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
@@ -158,14 +159,25 @@ metadata.create_all(engine)
 # -------------------------
 # RESET FUNCTION
 # -------------------------
+
 def reset_database():
     """
-    Drops all tables and recreates them.
-    ⚠️ WARNING: This deletes ALL data!
+    Drops ALL tables in the connected Postgres DB,
+    then recreates them using metadata.
     """
-    metadata.drop_all(engine)
+    with engine.begin() as conn:
+        # Drop all tables (cascade = remove dependencies)
+        conn.execute(text("DROP SCHEMA public CASCADE;"))
+        conn.execute(text("CREATE SCHEMA public;"))
+
+    # Recreate all tables defined in metadata
     metadata.create_all(engine)
-    logger.info("✅ Database reset and recreated.")
+
+    # Seed sample data
+    init_traders_if_needed()
+    initialize_posts()
+
+    logger.info("✅ FULL Database reset, schema recreated, and re-seeded.")
 
 # Bot instance
 bot = Bot(token=TELEGRAM_TOKEN)
