@@ -641,62 +641,53 @@ def load_font(size, bold=False):
 # ============ IMAGE GENERATOR ============
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generate a clean profit report image (Webull/Robinhood style).
+    Generate a compact, realistic profit report card image.
     Returns an in-memory PNG buffer.
     """
-    W, H = 720, 1280
+    W, H = 600, 800  # compact canvas size
 
-    # Broker watermark
-    brokers = ["Webull", "Robinhood", "E*TRADE", "Fidelity", "Thinkorswim"]
-    broker = random.choice(brokers)
-
-    # Timestamp
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-    # Fonts
-    big_font = load_font(72, bold=True)
-    med_font = load_font(38, bold=True)
-    small_font = load_font(26)
+    # Fonts (smaller, tighter)
+    big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 50)
+    med_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
 
     # Background gradient
-    bg = Image.new("RGB", (W, H), (25, 60, 180))
+    bg = Image.new("RGB", (W, H), (20, 60, 180))
     gradient = Image.new("RGB", (1, H))
     for y in range(H):
-        gradient.putpixel((0, y), (20, 40 + y // 6, 120 + y // 8))
+        gradient.putpixel((0, y), (20, 40 + y // 10, 120 + y // 12))
     gradient = gradient.resize((W, H))
     bg = Image.blend(bg, gradient, 0.7)
 
     draw = ImageDraw.Draw(bg)
 
-    # White panel in center
-    panel = Image.new("RGB", (W - 120, H - 600), "white")
-    bg.paste(panel, (60, 300))
+    # White central panel
+    panel_h = 360
+    panel = Image.new("RGB", (W-80, panel_h), "white")
+    bg.paste(panel, (40, 160))
 
-    # Main text
-    draw.text((W//2, 360), f"{symbol} Profit Report", fill=(20, 40, 80), font=med_font, anchor="mm")
-    draw.text((W//2, 500), f"+${profit:,.0f}", fill="#22c55e", font=big_font, anchor="mm")
-    draw.text((W//2, 650), f"ROI: {roi:.1f}%", fill="#f59e0b", font=med_font, anchor="mm")
-    draw.text((W//2, 720), f"Deposit: ${deposit:,}", fill=(30, 30, 30), font=med_font, anchor="mm")
+    # Main content
+    draw.text((W//2, 190), f"{symbol} Profit Report", fill=(20,40,80), font=med_font, anchor="mm")
+    draw.text((W//2, 280), f"+${profit:,.0f}", fill="#22c55e", font=big_font, anchor="mm")
+    draw.text((W//2, 350), f"ROI: {roi:.1f}%", fill="#f59e0b", font=med_font, anchor="mm")
+    draw.text((W//2, 410), f"Deposit: ${deposit:,}", fill=(30,30,30), font=med_font, anchor="mm")
 
-    # Footer overlay
-    footer_height = 110
-    overlay = Image.new("RGBA", (W, footer_height), (0, 0, 0, 140))  # semi-transparent black
-    bg.paste(overlay, (0, H-footer_height), overlay)
+    # Footer overlay (semi-transparent strip)
+    footer_h = 70
+    overlay = Image.new("RGBA", (W, footer_h), (0, 0, 0, 160))
+    bg.paste(overlay, (0, H-footer_h), overlay)
 
-    # Footer text
-    draw.text((W//2, H-80),
-              f"{trader_name} • {ts}",
-              fill="white", font=small_font, anchor="mm")
-    draw.text((W//2, H-40),
-              broker,
-              fill="#22c55e", font=small_font, anchor="mm")
+    # Footer info
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    broker = random.choice(["Webull", "Robinhood", "Fidelity", "Thinkorswim", "E*TRADE"])
+    draw.text((W//2, H-50), f"{trader_name} • {ts}", fill="white", font=small_font, anchor="mm")
+    draw.text((W//2, H-25), broker, fill="#22c55e", font=small_font, anchor="mm")
 
-    # Save to memory
+    # Save to memory buffer
     buf = io.BytesIO()
     bg.save(buf, format="PNG")
     buf.seek(0)
     return buf
-
 # ============ PROFIT POSTING LOOP ============
 # ================================
 async def profit_posting_loop(app):
