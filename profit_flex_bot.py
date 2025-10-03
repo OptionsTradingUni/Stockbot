@@ -629,119 +629,77 @@ import numpy as np
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-def _fake_price_path(n=60, base=100.0, vol=1.2):
-    """Generate fake sparkline price path"""
-    x = np.arange(n)
-    y = np.cumsum(np.random.randn(n) * vol) + base
-    return x, y
+from PIL import Image, ImageDraw, ImageFont
+import random, io
+import numpy as np
+from datetime import datetime
 
-def generate_pl_image(symbol, deposit, profit, roi_percent, trader_name="Anonymous"):
+def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Create a stylish P/L image.
-    Main format = 'card' (clean stats), with rare 'big' + 'split'.
-    Returns a file path to a PNG image.
+    Generate a clean profit report image (Webull/Robinhood style).
+    Returns an in-memory PNG buffer.
     """
-    style = random.choices(
-        ["card", "big", "split"],
-        weights=[0.7, 0.15, 0.15],  # card is most common
-        k=1
-    )[0]
+    W, H = 720, 1280
 
-    dark_bg = "#0d1117"
-    dark_panel = "#161b22"
-    accent_options = ["#22c55e", "#3b82f6", "#f59e0b", "#a855f7", "#ef4444"]
-    accent = random.choice(accent_options)
+    # Random broker watermark
+    brokers = ["Webull", "Robinhood", "E*TRADE", "Fidelity", "Thinkorswim"]
+    broker = random.choice(brokers)
 
-    if style in ("card", "big"):
-        fig, ax = plt.subplots(figsize=(6, 3.6), dpi=140)
-        fig.patch.set_facecolor(dark_bg)
-        ax.set_facecolor(dark_panel)
-        ax.axis("off")
+    # Fake timestamp
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    if style == "card":
-        ax.text(0.5, 0.92, f"{symbol} Profit Update", ha="center", va="center",
-                fontsize=17, color="white", fontweight="bold")
+    # Fonts
+    big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
+    med_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
+    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 26)
 
-        # Sparkline
-        x, y = _fake_price_path(n=50, base=100.0, vol=random.uniform(0.8, 1.8))
-        ax.plot(x, y, lw=2.2, color=accent, alpha=0.85)
-        ax.fill_between(x, y, y2=y.min(), color=accent, alpha=0.12)
+    # Background gradient (blue Webull-style)
+    bg = Image.new("RGB", (W, H), (25, 60, 180))
+    gradient = Image.new("RGB", (1, H))
+    for y in range(H):
+        # darker bottom for readability
+        gradient.putpixel((0, y), (20, 40 + y // 6, 120 + y // 8))
+    gradient = gradient.resize((W, H))
+    bg = Image.blend(bg, gradient, 0.7)
 
-        # Stats block
-        ax.text(0.08, 0.65, f"Deposit", fontsize=10, color="#9ca3af")
-        ax.text(0.08, 0.56, f"${deposit:,.0f}", fontsize=16, color="white", fontweight="bold")
+    draw = ImageDraw.Draw(bg)
 
-        ax.text(0.40, 0.65, f"Profit", fontsize=10, color="#9ca3af")
-        ax.text(0.40, 0.56, f"${profit:,.0f}", fontsize=16, color="#22c55e", fontweight="bold")
+    # White panel in center
+    panel = Image.new("RGB", (W - 120, H - 600), "white")
+    bg.paste(panel, (60, 300))
 
-        ax.text(0.72, 0.65, f"ROI", fontsize=10, color="#9ca3af")
-        ax.text(0.72, 0.56, f"{roi_percent:.1f}%", fontsize=16, color="#f59e0b", fontweight="bold")
+    # Main text
+    draw.text((W//2, 360), f"{symbol} Profit Report", fill=(20, 40, 80), font=med_font, anchor="mm")
+    draw.text((W//2, 500), f"+${profit:,.0f}", fill="#22c55e", font=big_font, anchor="mm")
+    draw.text((W//2, 650), f"ROI: {roi:.1f}%", fill="#f59e0b", font=med_font, anchor="mm")
+    draw.text((W//2, 720), f"Deposit: ${deposit:,}", fill=(30, 30, 30), font=med_font, anchor="mm")
 
-        ax.text(0.08, 0.20, f"Trader: {trader_name}", fontsize=11, color="#e5e7eb")
-        ax.text(0.72, 0.20, datetime.now().strftime("%Y-%m-%d %H:%M UTC"),
-                fontsize=9, color="#9ca3af", ha="right")
+    # === Footer Strip ===
+    footer_height = 110
+    overlay = Image.new("RGBA", (W, footer_height), (0, 0, 0, 140))  # semi-transparent black
+    bg.paste(overlay, (0, H-footer_height), overlay)
 
-    elif style == "big":
-        ax.text(0.5, 0.82, f"{symbol}", ha="center", va="center",
-                fontsize=20, color="white", fontweight="bold")
-        ax.text(0.5, 0.56, f"+${profit:,.0f}", ha="center", va="center",
-                fontsize=36, color=accent, fontweight="bold")
-        ax.text(0.5, 0.38, f"ROI {roi_percent:.1f}% • Deposit ${deposit:,.0f}",
-                ha="center", va="center", fontsize=12, color="#e5e7eb")
-        ax.text(0.5, 0.18, f"Trader: {trader_name}",
-                ha="center", va="center", fontsize=11, color="#9ca3af")
+    # Footer text
+    draw.text((W//2, H-80),
+              f"{trader_name} • {ts}",
+              fill="white", font=small_font, anchor="mm")
+    draw.text((W//2, H-40),
+              broker,
+              fill="#22c55e", font=small_font, anchor="mm")
 
-        circle = plt.Circle((0.5, 0.56), 0.32, transform=ax.transAxes, color=accent, alpha=0.08)
-        ax.add_artist(circle)
-
-    elif style == "split":
-        W, H = 900, 520
-        base = Image.new("RGB", (W, H), dark_bg)
-        panel = Image.new("RGB", (W - 80, H - 80), dark_panel)
-        panel = panel.filter(ImageFilter.GaussianBlur(0.5))
-        base.paste(panel, (40, 40))
-
-        draw = ImageDraw.Draw(base)
-        title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
-        big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 62)
-        body_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-        small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
-
-        draw.text((60, 58), f"{symbol} Profit Update", font=title_font, fill="white")
-        draw.text((60, 140), f"+${profit:,.0f}", font=big_font, fill=accent)
-        draw.text((60, 250), f"Deposit: ${deposit:,.0f}", font=body_font, fill="#e5e7eb")
-        draw.text((60, 290), f"ROI: {roi_percent:.1f}%", font=body_font, fill="#f59e0b")
-        draw.text((60, 340), f"Trader: {trader_name}", font=body_font, fill="#9ca3af")
-        draw.text((60, 400), datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
-                  font=small_font, fill="#6b7280")
-
-        x, y = _fake_price_path(n=80, base=100, vol=random.uniform(0.8, 2.0))
-        px = np.interp(x, (x.min(), x.max()), (W*0.60, W*0.92))
-        py = np.interp(y, (y.min(), y.max()), (H*0.75, H*0.45))
-        for i in range(len(px)-1):
-            draw.line((px[i], py[i], px[i+1], py[i+1]), fill=accent, width=3)
-
-        img_path = "pl_report.png"
-        base.save(img_path, format="PNG")
-        return img_path
-
-    img_path = "pl_report.png"
-    plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
-    plt.close(fig)
-    return img_path
+    # Save to memory
+    buf = io.BytesIO()
+    bg.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
 # Profit Posting Loop with Images
 # ================================
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
         try:
-            # ⏳ Random wait (weighted: short intervals more common)
-            wait_minutes = random.choices(
-                [2, 5, 6, 8, 10, 20, 25, 30, 35],
-                weights=[20, 18, 18, 15, 15, 5, 4, 3, 2],  # bias toward shorter times
-                k=1
-            )[0]
-
+            # ⏳ Random wait between posts
+            wait_minutes = random.choice([2, 5, 6, 8, 10, 20, 25, 30, 35])
             wait_seconds = wait_minutes * 60
             logger.info(f"Next profit post in {wait_minutes}m at {datetime.now(timezone.utc)}")
             await asyncio.sleep(wait_seconds)
@@ -760,10 +718,10 @@ async def profit_posting_loop(app):
                     mult = random.uniform(20, 60)
             else:
                 r = random.random()
-                if r < 0.6:  # common range
+                if r < 0.6:  # common
                     deposit = random.randint(400, 2500)
                     mult = random.uniform(2, 6)
-                elif r < 0.9:  # less common, bigger
+                elif r < 0.9:  # less common
                     deposit = random.randint(3000, 7000)
                     mult = random.uniform(2, 5)
                 else:  # rare whale
@@ -771,10 +729,10 @@ async def profit_posting_loop(app):
                     mult = random.uniform(2, 4)
 
             profit = int((deposit * mult) // 50 * 50)
-            percentage_gain = round((profit / deposit - 1) * 100, 1)
+            roi = round((profit / deposit - 1) * 100, 1)
 
-            trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
-            reason = f"{symbol} {trading_style} worked out perfectly! (+{percentage_gain}%)"
+            trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
+            reason = f"{symbol} {trading_style} setup worked perfectly! (+{roi}%)"
 
             # 👤 Pick a trader name
             trader_id, trader_name = random.choice(RANKING_TRADERS)
@@ -782,48 +740,44 @@ async def profit_posting_loop(app):
             # 🏆 Try update leaderboard
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # 📢 Main profit message (text)
+            # 📢 Main profit message text
             msg = (
                 f"📈 <b>{symbol} Profit Update</b>\n"
                 f"👤 Trader: {trader_name}\n"
                 f"💰 Invested: ${deposit:,}\n"
-                f"🎯 Profit: ${profit:,} (+{percentage_gain}%)\n"
+                f"🎯 Profit: ${profit:,} (+{roi}%)\n"
                 f"📊 Strategy: {trading_style}\n"
                 f"🔥 {reason}\n\n"
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
 
-            # ✅ Post to Telegram (image + caption)
+            # ✅ Generate profit card image
             try:
-                img_path = generate_pl_image(
+                img_buf = generate_profit_card(
                     symbol=symbol,
-                    deposit=deposit,
                     profit=profit,
-                    roi_percent=percentage_gain,
+                    roi=roi,
+                    deposit=deposit,
                     trader_name=trader_name
                 )
 
-                caption = msg
-                if len(msg) > 900:
-                    caption = short_highlight(symbol, profit, percentage_gain)
+                caption = msg if len(msg) < 900 else f"{symbol}: +${profit:,} (+{roi}%)"
 
-                with open(img_path, "rb") as f:
-                    await app.bot.send_photo(
-                        chat_id=TELEGRAM_CHAT_ID,
-                        photo=f,
-                        caption=caption,
-                        parse_mode=constants.ParseMode.HTML
-                    )
+                await app.bot.send_photo(
+                    chat_id=TELEGRAM_CHAT_ID,
+                    photo=img_buf,
+                    caption=caption,
+                    parse_mode=constants.ParseMode.HTML
+                )
 
-                if caption is not msg:
+                if caption != msg:  # send full message after if truncated
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
                         text=msg,
                         parse_mode=constants.ParseMode.HTML
                     )
 
-                logger.info(f"[PROFIT POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → Profit ${profit:.2f}")
-                log_post(symbol, msg, deposit, profit)
+                logger.info(f"[POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → Profit ${profit:.2f}")
 
             except Exception as e:
                 logger.error(f"Failed to send profit with image: {e}")
