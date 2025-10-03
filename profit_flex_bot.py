@@ -726,16 +726,20 @@ async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
         try:
-            wait_minutes = random.choice([2, 5, 6, 8, 10, 20, 25, 30, 35])
+            # Weighted wait times
+            if random.random() < 0.75:  # 75% chance = common short wait
+                wait_minutes = random.randint(2, 10)
+            else:  # 25% chance = uncommon long wait
+                wait_minutes = random.randint(20, 30)
+
             await asyncio.sleep(wait_minutes * 60)
 
-            # Pick symbol
+            # --- Generate profit scenario ---
             if random.random() < 0.7:
                 symbol = random.choice(MEME_COINS)
             else:
                 symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
 
-            # Profit ranges
             if symbol in MEME_COINS:
                 deposit = random.randint(500, 5000)
                 mult = random.uniform(3, 15)
@@ -808,12 +812,52 @@ async def profit_posting_loop(app):
             break
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
-            # ❌ Send error alert to admin DM
             if ADMIN_ID:
                 await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
             await asyncio.sleep(5)
 
+async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
 
+    # Only allow admin to trigger
+    if user_id != str(ADMIN_ID):
+        await update.message.reply_text("🚫 You are not authorized to trigger profit posts.")
+        return
+
+    # Generate profit scenario instantly
+    if random.random() < 0.7:
+        symbol = random.choice(MEME_COINS)
+    else:
+        symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
+
+    deposit = random.randint(500, 5000)
+    mult = random.uniform(2, 8)
+    profit = int((deposit * mult) // 50 * 50)
+    roi = round((profit / deposit - 1) * 100, 1)
+    trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
+    trader_id, trader_name = random.choice(RANKING_TRADERS)
+    rankings, pos = update_rankings_with_new_profit(trader_name, profit)
+
+    msg = (
+        f"📈 <b>{symbol} Profit Update</b>\n"
+        f"👤 Trader: {trader_name}\n"
+        f"💰 Invested: ${deposit:,}\n"
+        f"🎯 Profit: ${profit:,} (+{roi}%)\n"
+        f"📊 Strategy: {trading_style}\n\n"
+        f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
+    )
+
+    img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
+
+    await context.bot.send_photo(
+        chat_id=TELEGRAM_CHAT_ID,
+        photo=img_buf,
+        caption=msg,
+        parse_mode=constants.ParseMode.HTML
+    )
+
+    await update.message.reply_text("✅ Profit update posted to group!")
+    
 async def alert_admin_user_action(update: Update, action: str):
     """Send you (admin) a DM whenever a user interacts with bot"""
     if ADMIN_ID:
@@ -1106,6 +1150,8 @@ def main():
     app.add_handler(CommandHandler("trade_status", trade_status_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("resetdb", resetdb_handler))
+    app.add_handler(CommandHandler("postprofit", manual_post_handler))
+
     
     async def on_startup(app):
         app.create_task(profit_posting_loop(app))
