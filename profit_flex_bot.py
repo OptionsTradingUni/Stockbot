@@ -630,7 +630,7 @@ from telegram import constants
 # ===========================
 # CONFIG
 # ===========================
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+TELEGRAM_CHAT_ID = "TELEGRAM_CHAT_ID"
 
 # Load fonts safely
 def load_font(size, bold=False):
