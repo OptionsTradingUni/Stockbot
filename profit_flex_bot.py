@@ -735,8 +735,13 @@ async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
         try:
-            # ⏳ Random wait
-            wait_minutes = random.choice([15, 20, 30, 40])
+            # ⏳ Random wait (weighted: short intervals more common)
+            wait_minutes = random.choices(
+                [2, 5, 6, 8, 10, 20, 25, 30, 35],
+                weights=[20, 18, 18, 15, 15, 5, 4, 3, 2],  # bias toward shorter times
+                k=1
+            )[0]
+
             wait_seconds = wait_minutes * 60
             logger.info(f"Next profit post in {wait_minutes}m at {datetime.now(timezone.utc)}")
             await asyncio.sleep(wait_seconds)
@@ -799,7 +804,7 @@ async def profit_posting_loop(app):
                 )
 
                 caption = msg
-                if len(msg) > 900:  # shorten if too long
+                if len(msg) > 900:
                     caption = short_highlight(symbol, profit, percentage_gain)
 
                 with open(img_path, "rb") as f:
@@ -810,7 +815,7 @@ async def profit_posting_loop(app):
                         parse_mode=constants.ParseMode.HTML
                     )
 
-                if caption is not msg:  # send full message separately if shortened
+                if caption is not msg:
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
                         text=msg,
