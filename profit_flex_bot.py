@@ -386,45 +386,40 @@ def fetch_recent_profits():
 # Helper: Generate profit scenario with realistic gains
 def generate_profit_scenario(symbol):
     """
-    Generate realistic profit scenario:
-    - Meme coins: 2x–15x, rare moonshots higher
-    - Stocks/Crypto: 2x–10x, rare whales up to 20x
-    Returns: (deposit, profit, roi, reason, trading_style)
+    Generate realistic profit scenario with capped bands:
+    - Meme coins:
+        • Common: $1k–$10k
+        • Less common: $10k–$20k
+        • Rare flex: up to $70k (very low chance)
+    - Stocks/Crypto:
+        • Common: $500–$5k
+        • Less common: $5k–$8k
+        • Rare whale: up to $55k (very low chance)
     """
 
     # --- Meme coins ---
     if symbol in MEME_COINS:
         r = random.random()
-        if r < 0.7:    # common
-            deposit = random.randint(200, 2000)
-            mult = random.uniform(2, 6)
-        elif r < 0.9:  # less common
-            deposit = random.randint(2000, 6000)
-            mult = random.uniform(6, 10)
-        elif r < 0.98: # rare
-            deposit = random.randint(4000, 8000)
-            mult = random.uniform(10, 15)
-        else:          # moonshot
-            deposit = random.randint(5000, 10000)
-            mult = random.uniform(15, 30)
+        if r < 0.75:    # 75% common
+            profit = random.randint(1000, 10000)
+        elif r < 0.95:  # 20% less common
+            profit = random.randint(10000, 20000)
+        else:           # 5% rare moonshot
+            profit = random.randint(20000, 70000)
 
     # --- Stocks & Crypto ---
     else:
         r = random.random()
-        if r < 0.7:    # common
-            deposit = random.randint(500, 2500)
-            mult = random.uniform(2, 4)
-        elif r < 0.9:  # less common
-            deposit = random.randint(3000, 8000)
-            mult = random.uniform(4, 6)
-        elif r < 0.98: # rare whale
-            deposit = random.randint(8000, 15000)
-            mult = random.uniform(6, 10)
-        else:          # legendary
-            deposit = random.randint(15000, 30000)
-            mult = random.uniform(10, 20)
+        if r < 0.75:    # 75% common
+            profit = random.randint(500, 5000)
+        elif r < 0.95:  # 20% less common
+            profit = random.randint(5000, 8000)
+        else:           # 5% rare whale
+            profit = random.randint(8000, 55000)
 
-    profit = int((deposit * mult) // 50 * 50)
+    # Back-calc deposit & ROI so it looks consistent
+    multiplier = random.uniform(2, 6)  # moderate leverage range
+    deposit = max(100, int(profit / multiplier))
     roi = round((profit / deposit - 1) * 100, 1)
 
     # Trading style & reason
