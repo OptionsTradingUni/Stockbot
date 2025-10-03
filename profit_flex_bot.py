@@ -867,6 +867,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = f"@{user.username}" if user.username else user.full_name
         text = f"👤 {username} ({user.id}) used: {action}"
         await update.get_bot().send_message(chat_id=ADMIN_ID, text=text)
+        
     chat_id = update.effective_chat.id
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
