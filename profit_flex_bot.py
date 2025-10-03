@@ -857,21 +857,27 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
         await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
+# ================================
 # /start handler with Top 3 Rankings
-# -----------------------
-async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):        
+# ================================
+
+async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
 
+    # ✅ Alert admin that user interacted
+    await alert_admin_user_action(update, "/start command")
+
     # ✅ Get leaderboard (cached or rebuilt if needed)
-    social_lines = fetch_cached_rankings()  # already returns sorted list
+    social_lines = fetch_cached_rankings()  # returns sorted list
     top3 = "\n".join(social_lines[:3]) if social_lines else "No rankings yet."
 
     # Pick a random success story index
     total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
     random_index = random.randint(0, total_stories - 1)
 
+    # Inline buttons
     keyboard = [
         [InlineKeyboardButton("📊 Full Rankings", callback_data="rankings"),
          InlineKeyboardButton("📖 Success Stories", callback_data=f"success_any_{random_index}")],
@@ -882,6 +888,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # Welcome message
     welcome_text = (
         f"👋 Welcome, <b>{name}</b>!\n\n"
         f"At <b>Options Trading University</b>, we provide expert-led training, live profit flexes, "
@@ -917,13 +924,17 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error adding user {user.id}: {e}")
 
+
+# ================================
+# Admin Alert Helper
+# ================================
 async def alert_admin_user_action(update, action):
     """Send an alert DM to admin whenever someone interacts with the bot"""
     if ADMIN_ID:
         user = update.effective_user
         username = f"@{user.username}" if user.username else user.full_name
-        text = f"👤 {username} ({user.id}) used: {action}"
-        await update.get_bot().send_message(chat_id=ADMIN_ID, text=text)
+        alert_text = f"👤 {username} ({user.id}) used: {action}"
+        await update.get_bot().send_message(chat_id=ADMIN_ID, text=alert_text)
 
 
 # Callback handler for inline buttons
@@ -1135,12 +1146,27 @@ async def trade_status_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ================================
+# Startup + Main
+# ================================
+
+async def on_startup(app):
+    """Notify admin and start the profit posting loop when bot launches."""
+    logger.info("Bot started. Launching posting loop…")
+    app.create_task(profit_posting_loop(app))
+    if ADMIN_ID:
+        await app.bot.send_message(
+            chat_id=ADMIN_ID,
+            text="✅ Bot is alive and posting loop started!"
+        )
+
 def main():
     if TELEGRAM_TOKEN is None or TELEGRAM_CHAT_ID is None:
-        raise SystemExit("TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set in .env")
+        raise SystemExit("❌ TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set in .env")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # Register command handlers
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("status", status_handler))
     app.add_handler(CommandHandler("help", help_handler))
@@ -1149,12 +1175,12 @@ def main():
     app.add_handler(CommandHandler("resetdb", resetdb_handler))
     app.add_handler(CommandHandler("postprofit", manual_post_handler))
 
+    # Hook startup event
     app.post_init = on_startup
+
+    logger.info("🚀 Bot application built and ready.")
     app.run_polling()
 
-    
-    async def on_startup(app):
-    logger.info("Bot started. Launching posting loop…")
-    app.create_task(profit_posting_loop(app))
-    if ADMIN_ID:
-        await app.bot.send_message(chat_id=ADMIN_ID, text="✅ Bot is alive and posting loop started!")
+# Run main
+if __name__ == "__main__":
+    main()
