@@ -532,11 +532,12 @@ def fetch_cached_rankings():
 def save_rankings(parsed):
     """
     Save top 10 traders to DB with medals and return formatted lines.
+    Always overwrite numbering so no duplicates like '4. 9.' appear.
     """
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     lines = []
     for i, (name, total) in enumerate(parsed, start=1):
-        badge = medals.get(i, f"{i}.")
+        badge = medals.get(i, f"{i}.")   # force clean numbering
         lines.append(f"{badge} {name} — ${total:,} profit")
 
     with engine.begin() as conn:
@@ -561,7 +562,7 @@ def update_rankings_with_new_profit(trader_name, new_profit):
     clean = []
     for line in parsed:
         try:
-            name = line.split("—")[0].split("</b>")[-1].split("<b>")[-1].strip()
+            name = line.split("—")[0].replace("🥇","").replace("🥈","").replace("🥉","").replace(".","").strip()
             profit = int(line.split("$")[-1].split()[0].replace(",", ""))
             clean.append((name, profit))
         except:
@@ -802,15 +803,18 @@ async def profit_posting_loop(app):
                 confirm = f"✅ Auto-posted {symbol} profit: ${profit:,} at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
                 await app.bot.send_message(chat_id=ADMIN_ID, text=confirm)
 
-            # Hype message if leaderboard shift
+            # 🎉 Hype message logic
             if pos:
+                hype = None
                 if pos == 1:
                     hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
                 elif pos <= 3:
                     hype = f"🔥 {trader_name} broke into the Top 3 with ${profit:,}!"
-                else:
+                elif pos <= 10 and random.random() < 0.25:  # only 25% chance for Top 10 entry
                     hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
-                await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
+
+                if hype:
+                    await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
 
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
@@ -860,16 +864,18 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await update.message.reply_text("✅ Manual profit update posted!")
 
-    # Extra hype
+    # 🎉 Hype message logic
     if pos:
+        hype = None
         if pos == 1:
             hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
         elif pos <= 3:
             hype = f"🔥 {trader_name} broke into the Top 3 with ${profit:,}!"
-        else:
+        elif pos <= 10 and random.random() < 0.25:  # 25% chance
             hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
-        await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
-# ================================
+
+        if hype:
+            await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
 # /start handler with Top 3 Rankings
 # ================================
 
