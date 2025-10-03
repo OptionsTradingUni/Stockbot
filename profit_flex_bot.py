@@ -622,42 +622,51 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
     """
     return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
 
-
-from PIL import Image, ImageDraw, ImageFont
-import random, io
+import io, random, asyncio, logging
 from datetime import datetime, timezone
+from PIL import Image, ImageDraw, ImageFont
+from telegram import constants
 
-def _load_font(path, size):
-    """Try loading font, fallback to default if not found."""
+# ===========================
+# CONFIG
+# ===========================
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+
+# Load fonts safely
+def load_font(size, bold=False):
+    """
+    Try to load DejaVuSans (bundled in most servers).
+    Falls back to default if missing.
+    """
     try:
-        return ImageFont.truetype(path, size)
-    except:
+        if bold:
+            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+        else:
+            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+    except Exception:
         return ImageFont.load_default()
 
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
-import random, io
-from datetime import datetime
 
+# ===========================
+# IMAGE GENERATOR
+# ===========================
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generate a clean profit report image (Webull/Robinhood style).
-    Returns an in-memory PNG buffer.
+    Generate a clean profit report card in Webull/Robinhood style.
+    Always returns BytesIO first, but caller can re-save as file if needed.
     """
     W, H = 720, 1280
 
-    # Random broker watermark
     brokers = ["Webull", "Robinhood", "E*TRADE", "Fidelity", "Thinkorswim"]
     broker = random.choice(brokers)
-
-    # Fake timestamp
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     # Fonts
-    big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 92)
-    med_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
-    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
+    big_font   = load_font(72, bold=True)
+    med_font   = load_font(38, bold=True)
+    small_font = load_font(26, bold=False)
 
-    # Background gradient (blue Webull-style)
+    # Background gradient
     bg = Image.new("RGB", (W, H), (25, 60, 180))
     gradient = Image.new("RGB", (1, H))
     for y in range(H):
@@ -667,153 +676,88 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
 
     draw = ImageDraw.Draw(bg)
 
-    # === White Panel with Shadow ===
-    panel_width, panel_height = W - 120, 520
-    panel_x, panel_y = 60, 340
+    # White panel
+    panel = Image.new("RGB", (W - 120, H - 600), "white")
+    bg.paste(panel, (60, 300))
 
-    # Shadow
-    shadow = Image.new("RGBA", (panel_width+20, panel_height+20), (0, 0, 0, 0))
-    shadow_draw = ImageDraw.Draw(shadow)
-    shadow_draw.rounded_rectangle((0, 0, panel_width, panel_height), radius=30, fill=(0, 0, 0, 180))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(12))
-    bg.paste(shadow, (panel_x-10, panel_y-10), shadow)
+    # Main text
+    draw.text((W // 2, 360), f"{symbol} Profit Report", fill=(20, 40, 80), font=med_font, anchor="mm")
+    draw.text((W // 2, 500), f"+${profit:,.0f}", fill="#22c55e", font=big_font, anchor="mm")
+    draw.text((W // 2, 650), f"ROI: {roi:.1f}%", fill="#f59e0b", font=med_font, anchor="mm")
+    draw.text((W // 2, 720), f"Deposit: ${deposit:,}", fill=(30, 30, 30), font=med_font, anchor="mm")
 
-    # Panel
-    panel = Image.new("RGB", (panel_width, panel_height), "white")
-    panel_draw = ImageDraw.Draw(panel)
-    panel_draw.rounded_rectangle((0, 0, panel_width, panel_height), radius=30, outline=(220, 220, 220), width=3)
-    bg.paste(panel, (panel_x, panel_y))
+    # Footer strip
+    footer_height = 110
+    overlay = Image.new("RGBA", (W, footer_height), (0, 0, 0, 160))
+    bg.paste(overlay, (0, H - footer_height), overlay)
 
-    # === Main Text ===
-    draw.text((W//2, 380), f"{symbol} Profit Report", fill=(20, 40, 80), font=med_font, anchor="ma")
-    draw.text((W//2, 520), f"+${profit:,.0f}", fill="#22c55e", font=big_font, anchor="ma")
-    draw.text((W//2, 660), f"ROI: {roi:.1f}%", fill="#f59e0b", font=med_font, anchor="ma")
-    draw.text((W//2, 740), f"Deposit: ${deposit:,}", fill=(30, 30, 30), font=med_font, anchor="ma")
+    draw.text((W // 2, H - 80), f"{trader_name} • {ts}", fill="white", font=small_font, anchor="mm")
+    draw.text((W // 2, H - 40), broker, fill="#22c55e", font=small_font, anchor="mm")
 
-    # === Footer Strip ===
-    footer_height = 120
-    overlay = Image.new("RGBA", (W, footer_height), (0, 0, 0, 200))  # dark strong contrast
-    bg.paste(overlay, (0, H-footer_height), overlay)
-
-    # Footer text
-    draw.text((W//2, H-75),
-              f"{trader_name} • {ts}",
-              fill="white", font=small_font, anchor="mm")
-    draw.text((W//2, H-40),
-              broker,
-              fill="#22c55e", font=small_font, anchor="mm")
-
-    # Save to memory
+    # Save in memory
     buf = io.BytesIO()
     bg.save(buf, format="PNG")
     buf.seek(0)
     return buf
-# Profit Posting Loop with Images
-# ================================
+
+
+# ===========================
+# PROFIT POSTING LOOP
+# ===========================
 async def profit_posting_loop(app):
+    logger = logging.getLogger("profit_loop")
     logger.info("Profit posting task started.")
     while True:
         try:
-            # ⏳ Random wait between posts
-            wait_minutes = random.choice([2, 5, 6, 8, 10, 20, 25, 30, 35])
-            wait_seconds = wait_minutes * 60
-            logger.info(f"Next profit post in {wait_minutes}m at {datetime.now(timezone.utc)}")
-            await asyncio.sleep(wait_seconds)
+            # Random delay
+            wait_minutes = random.choice([2, 5, 6, 8, 10, 20, 25, 30])
+            await asyncio.sleep(wait_minutes * 60)
 
-            # 🔀 Pick a symbol
-            if random.random() < 0.7:
-                symbol = random.choice(MEME_COINS)
-            else:
-                symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
-
-            # --- Profit Ranges ---
-            if symbol in MEME_COINS:
-                deposit = random.randint(500, 5000)
-                mult = random.uniform(3, 15)
-                if random.random() < 0.05:  # rare moonshot
-                    mult = random.uniform(20, 60)
-            else:
-                r = random.random()
-                if r < 0.6:  # common
-                    deposit = random.randint(400, 2500)
-                    mult = random.uniform(2, 6)
-                elif r < 0.9:  # less common
-                    deposit = random.randint(3000, 7000)
-                    mult = random.uniform(2, 5)
-                else:  # rare whale
-                    deposit = random.randint(20000, 40000)
-                    mult = random.uniform(2, 4)
-
+            # Example: random numbers
+            symbol = random.choice(["AAPL", "TSLA", "ETH", "BTC", "SOL", "NIKY"])
+            deposit = random.randint(500, 5000)
+            mult = random.uniform(2, 8)
             profit = int((deposit * mult) // 50 * 50)
             roi = round((profit / deposit - 1) * 100, 1)
+            trader_name = random.choice(["Eva Park", "Ibrahim Butler", "Li Hui", "Nicholas Santos"])
 
-            trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
-            reason = f"{symbol} {trading_style} setup worked perfectly! (+{roi}%)"
-
-            # 👤 Pick a trader name
-            trader_id, trader_name = random.choice(RANKING_TRADERS)
-
-            # 🏆 Try update leaderboard
-            rankings, pos = update_rankings_with_new_profit(trader_name, profit)
-
-            # 📢 Main profit message text
             msg = (
                 f"📈 <b>{symbol} Profit Update</b>\n"
                 f"👤 Trader: {trader_name}\n"
                 f"💰 Invested: ${deposit:,}\n"
-                f"🎯 Profit: ${profit:,} (+{roi}%)\n"
-                f"📊 Strategy: {trading_style}\n"
-                f"🔥 {reason}\n\n"
-                f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
+                f"🎯 Profit: ${profit:,} (+{roi}%)"
             )
 
-            # ✅ Generate profit card image
+            # ✅ Generate profit card
+            img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
+
             try:
-                img_buf = generate_profit_card(
-                    symbol=symbol,
-                    profit=profit,
-                    roi=roi,
-                    deposit=deposit,
-                    trader_name=trader_name
-                )
-
-                caption = msg if len(msg) < 900 else f"{symbol}: +${profit:,} (+{roi}%)"
-
+                # Try buffer first
                 await app.bot.send_photo(
                     chat_id=TELEGRAM_CHAT_ID,
                     photo=img_buf,
-                    caption=caption,
+                    caption=msg,
                     parse_mode=constants.ParseMode.HTML
                 )
-
-                if caption != msg:  # send full message if truncated
-                    await app.bot.send_message(
+                logger.info(f"[POSTED BUFFER] {symbol} ${profit}")
+            except Exception as e:
+                logger.warning(f"Buffer send failed, fallback to file: {e}")
+                file_path = "pl_report.png"
+                with open(file_path, "wb") as f:
+                    f.write(img_buf.getbuffer())
+                with open(file_path, "rb") as f:
+                    await app.bot.send_photo(
                         chat_id=TELEGRAM_CHAT_ID,
-                        text=msg,
+                        photo=f,
+                        caption=msg,
                         parse_mode=constants.ParseMode.HTML
                     )
+                logger.info(f"[POSTED FILE] {symbol} ${profit}")
 
-                logger.info(f"[POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → Profit ${profit:.2f}")
-
-            except Exception as e:
-                logger.error(f"Failed to send profit with image: {e}")
-
-            # 🚀 Hype message if leaderboard changes
-            if pos:
-                if pos == 1:
-                    hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
-                elif pos <= 3:
-                    hype = f"🔥 {trader_name} broke into the Top 3 with ${profit:,}!"
-                else:
-                    hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
-                await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
-
-        except asyncio.CancelledError:
-            logger.info("Profit posting loop cancelled.")
-            break
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
             await asyncio.sleep(5)
+
 # -----------------------
 # /start handler with Top 3 Rankings
 # -----------------------
