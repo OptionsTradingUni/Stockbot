@@ -164,23 +164,33 @@ metadata.create_all(engine)
 
 def reset_database():
     """
-    Drops ALL tables in Postgres (by dropping schema public),
-    then recreates them from metadata and reseeds leaderboard/posts.
+    Full reset:
+    - Drops entire public schema in Postgres
+    - Recreates tables from metadata
+    - Clears posts, users, stories, rankings
+    - Seeds a fresh Top 10 leaderboard
     """
     with engine.begin() as conn:
-        # Drop + recreate schema
+        # Drop and recreate schema
         conn.execute(text("DROP SCHEMA public CASCADE;"))
         conn.execute(text("CREATE SCHEMA public;"))
 
     # Recreate schema
     metadata.create_all(engine)
 
-    # ✅ Seed Top 10 leaderboard immediately
+    # Clear everything just in case
+    with engine.begin() as conn:
+        conn.execute(delete(posts))
+        conn.execute(delete(users))
+        conn.execute(delete(success_stories))
+        conn.execute(delete(rankings_cache))
+
+    # ✅ Seed new leaderboard
     selected = random.sample(RANKING_TRADERS, 10)
     initial_board = [(name, random.randint(2000, 10000)) for _, name in selected]
     save_rankings(initial_board)
 
-    logger.info("✅ FULL Database reset, schema recreated, leaderboard reseeded.")
+    logger.info("✅ FULL reset: schema dropped, tables recreated, all cleared, leaderboard reseeded.")
 
 
 # -------------------------
