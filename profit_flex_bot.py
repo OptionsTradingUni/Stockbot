@@ -552,17 +552,19 @@ def save_rankings(parsed):
 def update_rankings_with_new_profit(trader_name, new_profit):
     """
     Update leaderboard cumulative totals.
-    - If trader exists: add profit to their total
-    - If new: append
-    - Keep only Top 10 sorted
+    Ensures numbering and medals are fully reset each time.
     """
     parsed = fetch_cached_rankings()
 
-    # Parse leaderboard back into tuples
     clean = []
     for line in parsed:
         try:
-            name = line.split("—")[0].replace("🥇","").replace("🥈","").replace("🥉","").replace(".","").strip()
+            # Strip all emojis, medals, and numbering completely
+            raw = line.split("—")[0].strip()
+            raw = raw.replace("🥇", "").replace("🥈", "").replace("🥉", "")
+            raw = "".join([c for c in raw if not c.isdigit() and c not in "."])  # strip stray numbers and dots
+            name = raw.strip()
+
             profit = int(line.split("$")[-1].split()[0].replace(",", ""))
             clean.append((name, profit))
         except:
@@ -583,14 +585,14 @@ def update_rankings_with_new_profit(trader_name, new_profit):
     if not found:
         clean.append((trader_name, new_profit))
 
-    # Sort by profit (desc) & keep top 10
+    # Sort & keep top 10
     clean.sort(key=lambda x: x[1], reverse=True)
     clean = clean[:10]
 
-    # Save back
+    # Save back with **fresh numbering**
     lines = save_rankings(clean)
 
-    # Get trader’s position
+    # Get position
     pos = None
     for i, (name, _) in enumerate(clean, start=1):
         if name == trader_name:
