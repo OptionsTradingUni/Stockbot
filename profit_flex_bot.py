@@ -623,41 +623,41 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
     return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
 
 
-def _fake_price_path(n=40, base=100.0, vol=1.5):
-    """
-    Make a tiny 'sparkline' path for some visual vibe on the card.
-    """
-    import numpy as np
+import random, io
+import matplotlib.pyplot as plt
+import numpy as np
+from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+def _fake_price_path(n=60, base=100.0, vol=1.2):
+    """Generate fake sparkline price path"""
     x = np.arange(n)
-    y = np.cumsum(np.random.normal(0, vol, n)) + base
-    y = (y - y.min()) / (y.max() - y.min() + 1e-9)  # 0..1 normalize
+    y = np.cumsum(np.random.randn(n) * vol) + base
     return x, y
 
-#new
 def generate_pl_image(symbol, deposit, profit, roi_percent, trader_name="Anonymous"):
     """
-    Create a stylish P/L image that varies each time.
+    Create a stylish P/L image.
+    Main format = 'card' (clean stats), with rare 'big' + 'split'.
     Returns a file path to a PNG image.
     """
-    import numpy as np
-    from datetime import datetime
+    style = random.choices(
+        ["card", "big", "split"],
+        weights=[0.7, 0.15, 0.15],  # card is most common
+        k=1
+    )[0]
 
-    style = random.choice(["card", "big", "bar", "split"])
-
-    # Common palette options
     dark_bg = "#0d1117"
     dark_panel = "#161b22"
     accent_options = ["#22c55e", "#3b82f6", "#f59e0b", "#a855f7", "#ef4444"]
     accent = random.choice(accent_options)
 
-    # Canvas via matplotlib
-    if style in ("card", "big", "bar"):
+    if style in ("card", "big"):
         fig, ax = plt.subplots(figsize=(6, 3.6), dpi=140)
         fig.patch.set_facecolor(dark_bg)
         ax.set_facecolor(dark_panel)
         ax.axis("off")
 
-    # Title
     if style == "card":
         ax.text(0.5, 0.92, f"{symbol} Profit Update", ha="center", va="center",
                 fontsize=17, color="white", fontweight="bold")
@@ -681,13 +681,7 @@ def generate_pl_image(symbol, deposit, profit, roi_percent, trader_name="Anonymo
         ax.text(0.72, 0.20, datetime.now().strftime("%Y-%m-%d %H:%M UTC"),
                 fontsize=9, color="#9ca3af", ha="right")
 
-        img_path = "pl_report.png"
-        plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
-        plt.close(fig)
-        return img_path
-
     elif style == "big":
-        # Big number center
         ax.text(0.5, 0.82, f"{symbol}", ha="center", va="center",
                 fontsize=20, color="white", fontweight="bold")
         ax.text(0.5, 0.56, f"+${profit:,.0f}", ha="center", va="center",
@@ -697,41 +691,10 @@ def generate_pl_image(symbol, deposit, profit, roi_percent, trader_name="Anonymo
         ax.text(0.5, 0.18, f"Trader: {trader_name}",
                 ha="center", va="center", fontsize=11, color="#9ca3af")
 
-        # subtle glow ring
         circle = plt.Circle((0.5, 0.56), 0.32, transform=ax.transAxes, color=accent, alpha=0.08)
         ax.add_artist(circle)
 
-        img_path = "pl_report.png"
-        plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
-        plt.close(fig)
-        return img_path
-
-    elif style == "bar":
-        # Bar comparing deposit vs profit
-        vals = [deposit, profit]
-        labels = ["Deposit", "Profit"]
-        bars = ax.bar(labels, vals)
-        for b, c in zip(bars, ["#3b82f6", "#22c55e"]):
-            b.set_color(c)
-        ax.spines[:].set_visible(False)
-        ax.tick_params(colors="#e5e7eb", labelsize=12)
-        ax.set_facecolor(dark_panel)
-
-        ax.text(0.5, 0.92, f"{symbol} • ROI {roi_percent:.1f}%", ha="center", va="center",
-                fontsize=16, color="white", fontweight="bold", transform=ax.transAxes)
-        ax.text(0.5, 0.84, f"Trader: {trader_name}", ha="center", va="center",
-                fontsize=10, color="#9ca3af", transform=ax.transAxes)
-
-        for i, v in enumerate(vals):
-            ax.text(i, v, f"${v:,.0f}", ha="center", va="bottom", fontsize=11, color="#e5e7eb")
-
-        img_path = "pl_report.png"
-        plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
-        plt.close(fig)
-        return img_path
-
     elif style == "split":
-        # PIL layout: blurred background panel + overlay text blocks
         W, H = 900, 520
         base = Image.new("RGB", (W, H), dark_bg)
         panel = Image.new("RGB", (W - 80, H - 80), dark_panel)
@@ -739,27 +702,20 @@ def generate_pl_image(symbol, deposit, profit, roi_percent, trader_name="Anonymo
         base.paste(panel, (40, 40))
 
         draw = ImageDraw.Draw(base)
-        # Fonts (use default DejaVu in container)
         title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
         big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 62)
         body_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
         small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
 
-        # Title
         draw.text((60, 58), f"{symbol} Profit Update", font=title_font, fill="white")
-        # Big profit
         draw.text((60, 140), f"+${profit:,.0f}", font=big_font, fill=accent)
-        # Row
         draw.text((60, 250), f"Deposit: ${deposit:,.0f}", font=body_font, fill="#e5e7eb")
         draw.text((60, 290), f"ROI: {roi_percent:.1f}%", font=body_font, fill="#f59e0b")
         draw.text((60, 340), f"Trader: {trader_name}", font=body_font, fill="#9ca3af")
         draw.text((60, 400), datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
                   font=small_font, fill="#6b7280")
 
-        # Simple sparkline
         x, y = _fake_price_path(n=80, base=100, vol=random.uniform(0.8, 2.0))
-        # map to panel area
-        import numpy as np
         px = np.interp(x, (x.min(), x.max()), (W*0.60, W*0.92))
         py = np.interp(y, (y.min(), y.max()), (H*0.75, H*0.45))
         for i in range(len(px)-1):
@@ -769,17 +725,10 @@ def generate_pl_image(symbol, deposit, profit, roi_percent, trader_name="Anonymo
         base.save(img_path, format="PNG")
         return img_path
 
-    # Fallback
     img_path = "pl_report.png"
-    fig, ax = plt.subplots(figsize=(6, 3.6), dpi=140)
-    fig.patch.set_facecolor(dark_bg); ax.set_facecolor(dark_panel); ax.axis("off")
-    ax.text(0.5, 0.5, f"+${profit:,.0f} on {symbol}", ha="center", va="center",
-            fontsize=20, color="white", fontweight="bold")
     plt.savefig(img_path, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     return img_path
-# Posting Loop
-# ================================
 # Profit Posting Loop with Images
 # ================================
 async def profit_posting_loop(app):
@@ -890,6 +839,47 @@ async def profit_posting_loop(app):
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
             await asyncio.sleep(5)
+
+
+async def seed_rankings(update, context):
+    """Prefill leaderboard with realistic Top 10 traders."""
+    with engine.begin() as conn:
+        seeded = []
+        # 7 normal traders (3k–10k)
+        for trader_id, trader_name in random.sample(RANKING_TRADERS, 7):
+            profit = random.randint(3000, 10000)
+            conn.execute(text("""
+                INSERT INTO rankings (trader_id, trader_name, profit)
+                VALUES (:id, :name, :profit)
+                ON CONFLICT(trader_id) DO UPDATE SET profit=EXCLUDED.profit
+            """), {"id": trader_id, "name": trader_name, "profit": profit})
+            seeded.append(f"{trader_name} — ${profit:,}")
+
+        # 2 smaller ones (1k–3k)
+        for trader_id, trader_name in random.sample(RANKING_TRADERS, 2):
+            profit = random.randint(1000, 3000)
+            conn.execute(text("""
+                INSERT INTO rankings (trader_id, trader_name, profit)
+                VALUES (:id, :name, :profit)
+                ON CONFLICT(trader_id) DO UPDATE SET profit=EXCLUDED.profit
+            """), {"id": trader_id, "name": trader_name, "profit": profit})
+            seeded.append(f"{trader_name} — ${profit:,}")
+
+        # 1 whale (20k–30k)
+        trader_id, trader_name = random.choice(RANKING_TRADERS)
+        profit = random.randint(20000, 30000)
+        conn.execute(text("""
+            INSERT INTO rankings (trader_id, trader_name, profit)
+            VALUES (:id, :name, :profit)
+            ON CONFLICT(trader_id) DO UPDATE SET profit=EXCLUDED.profit
+        """), {"id": trader_id, "name": trader_name, "profit": profit})
+        seeded.append(f"{trader_name} — ${profit:,} 🐋")
+
+    msg = "✅ Seeded Top 10 Leaderboard:\n\n" + "\n".join(seeded)
+    await context.bot.send_message(
+        chat_id=update.effective_user.id,
+        text=msg
+    )
 # -----------------------
 # /start handler with Top 3 Rankings
 # -----------------------
@@ -1167,6 +1157,7 @@ def main():
     app.add_handler(CommandHandler("trade_status", trade_status_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("resetdb", resetdb_handler))
+    app.add_handler(CommandHandler("seed_rankings", seed_rankings))
     
     async def on_startup(app):
         app.create_task(profit_posting_loop(app))
