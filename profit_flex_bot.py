@@ -164,13 +164,48 @@ metadata.create_all(engine)
 
 def reset_database():
     """
-    Drops ALL tables in the connected Postgres DB,
-    then recreates them using metadata.
+    Drops ALL tables in Postgres (by dropping schema public),
+    then recreates them from metadata and reseeds.
     """
     with engine.begin() as conn:
-        # Drop all tables (cascade = remove dependencies)
+        # Drop + recreate schema
         conn.execute(text("DROP SCHEMA public CASCADE;"))
         conn.execute(text("CREATE SCHEMA public;"))
+
+    async def resetdb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+
+    # 🔐 Restrict to admin only
+    if user_id != str(ADMIN_ID):
+        await update.message.reply_text("🚫 You are not authorized to reset the database.")
+        return
+
+    try:
+        reset_database()
+        await update.message.reply_text("✅ Database has been reset and recreated.")
+
+        # DM admin too
+        if ADMIN_ID:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text="⚡️ DB Reset completed successfully. Schema rebuilt + traders/posts reseeded."
+            )
+    except Exception as e:
+        err = f"❌ Reset failed: {e}"
+        await update.message.reply_text(err)
+        if ADMIN_ID:
+            await context.bot.send_message(chat_id=ADMIN_ID, text=err)
+
+    
+
+    # Recreate tables
+    metadata.create_all(engine)
+
+    # Optional reseed
+    init_traders_if_needed()
+    initialize_posts()
+
+    logger.info("✅ FULL Database reset and reseeded.")
 
     # Recreate all tables defined in metadata
     metadata.create_all(engine)
@@ -309,62 +344,60 @@ def fetch_recent_profits():
 # Helper: Generate profit scenario with realistic gains
 def generate_profit_scenario(symbol):
     """
-    Generate realistic profit scenarios with weighted probabilities.
-    Keeps small/medium wins common, big moonshots rare.
+    Generate realistic profit scenario:
+    - Meme coins: 2x–15x, rare moonshots higher
+    - Stocks/Crypto: 2x–10x, rare whales up to 20x
+    Returns: (deposit, profit, roi, reason, trading_style)
     """
-    recent_profits = fetch_recent_profits()
 
-    # --- MEME COINS ---
+    # --- Meme coins ---
     if symbol in MEME_COINS:
-        deposit = random.randint(300, 4000)
         r = random.random()
-        if r < 0.60:      # 60% common
+        if r < 0.7:    # common
+            deposit = random.randint(200, 2000)
             mult = random.uniform(2, 6)
-        elif r < 0.85:    # 25% uncommon
+        elif r < 0.9:  # less common
+            deposit = random.randint(2000, 6000)
             mult = random.uniform(6, 10)
-        elif r < 0.95:    # 10% rare
+        elif r < 0.98: # rare
+            deposit = random.randint(4000, 8000)
             mult = random.uniform(10, 15)
-        else:             # 5% moonshot
-            mult = random.uniform(15, 20)
+        else:          # moonshot
+            deposit = random.randint(5000, 10000)
+            mult = random.uniform(15, 30)
 
-    # --- STOCKS / CRYPTO ---
+    # --- Stocks & Crypto ---
     else:
-        deposit = random.randint(500, 6000)
         r = random.random()
-        if r < 0.70:      # 70% common
-            mult = random.uniform(2, 5)
-        elif r < 0.90:    # 20% uncommon
-            deposit = random.randint(5000, 12000)
+        if r < 0.7:    # common
+            deposit = random.randint(500, 2500)
+            mult = random.uniform(2, 4)
+        elif r < 0.9:  # less common
+            deposit = random.randint(3000, 8000)
+            mult = random.uniform(4, 6)
+        elif r < 0.98: # rare whale
+            deposit = random.randint(8000, 15000)
             mult = random.uniform(6, 10)
-        elif r < 0.98:    # 8% whale
-            deposit = random.randint(10000, 20000)
-            mult = random.uniform(10, 15)
-        else:             # 2% insane spike
-            deposit = random.randint(15000, 25000)
-            mult = random.uniform(15, 20)
+        else:          # legendary
+            deposit = random.randint(15000, 30000)
+            mult = random.uniform(10, 20)
 
-    # Calculate profit + ROI
     profit = int((deposit * mult) // 50 * 50)
-    tries = 0
-    while profit in recent_profits and tries < 10:
-        profit = int((deposit * random.uniform(2, 8)) // 50 * 50)
-        tries += 1
-
     roi = round((profit / deposit - 1) * 100, 1)
 
     # Trading style & reason
     if symbol in STOCK_SYMBOLS:
-        style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
-        reason = f"{symbol} {style} setup delivered strong returns!"
+        trading_style = random.choice(["Scalping", "Day Trade", "Swing Trade", "Position"])
+        reason = f"{symbol} {trading_style} setup worked perfectly!"
     elif symbol in CRYPTO_SYMBOLS:
-        style = random.choice(["HODL", "Swing Trade", "Leverage Play", "DCA"])
-        reason = f"{symbol} {style} aligned perfectly with market move!"
+        trading_style = random.choice(["HODL", "Swing Trade", "Leverage", "Arbitrage"])
+        reason = f"{symbol} {trading_style} breakout gave solid returns!"
     else:
-        style = random.choice(["Early Sniping", "Pump Riding", "Community Flip", "Airdrop Hunt"])
-        reason = f"{symbol} {style} caught insane momentum!"
+        trading_style = random.choice(["Pump Riding", "Community Flip", "Early Sniping"])
+        reason = f"{symbol} {trading_style} run delivered massive gains!"
 
-    return deposit, profit, roi, reason, style
-
+    return deposit, profit, roi, reason, trading_style
+    
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
         if is_meme:
@@ -711,27 +744,27 @@ async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
         try:
-            # Weighted wait: 2–10min common, 20–30min uncommon
+            # Interval: 80% short (2–10 min), 20% long (20–30 min)
             wait_minutes = random.randint(2, 10) if random.random() < 0.8 else random.randint(20, 30)
             await asyncio.sleep(wait_minutes * 60)
 
-            # Pick a symbol
-            symbol = random.choice(MEME_COINS) if random.random() < 0.7 else random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
+            # Pick symbol
+            symbol = random.choice(MEME_COINS) if random.random() < 0.6 else random.choice(STOCK_SYMBOLS + CRYPTO_SYMBOLS)
 
-            # Generate realistic profit scenario
-            deposit, profit, roi, reason, style = generate_profit_scenario(symbol)
+            # Generate profit scenario
+            deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
 
-            # Trader + leaderboard
+            # Pick trader + update rankings
             trader_id, trader_name = random.choice(RANKING_TRADERS)
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # Main profit message
+            # Build message
             msg = (
                 f"📈 <b>{symbol} Profit Update</b>\n"
                 f"👤 Trader: {trader_name}\n"
                 f"💰 Invested: ${deposit:,}\n"
                 f"🎯 Profit: ${profit:,} (+{roi}%)\n"
-                f"📊 Strategy: {style}\n"
+                f"📊 Strategy: {trading_style}\n"
                 f"🔥 {reason}\n\n"
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
@@ -747,12 +780,12 @@ async def profit_posting_loop(app):
                 parse_mode=constants.ParseMode.HTML
             )
 
-            # DM admin confirmation
+            # DM confirmation
             if ADMIN_ID:
-                confirm = f"✅ Posted {symbol} update at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
+                confirm = f"✅ Auto-posted {symbol} profit: ${profit:,} at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
                 await app.bot.send_message(chat_id=ADMIN_ID, text=confirm)
 
-            # Hype message if leaderboard changes
+            # Hype message if leaderboard shift
             if pos:
                 if pos == 1:
                     hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
@@ -762,13 +795,10 @@ async def profit_posting_loop(app):
                     hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
                 await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
 
-        except asyncio.CancelledError:
-            logger.info("Profit posting loop cancelled.")
-            break
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
             if ADMIN_ID:
-                await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error: {e}")
+                await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
             await asyncio.sleep(5)
 
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -779,23 +809,23 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("🚫 You are not authorized to trigger manual posts.")
         return
 
-    # Pick a symbol
-    symbol = random.choice(MEME_COINS) if random.random() < 0.7 else random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
+    # Pick symbol
+    symbol = random.choice(MEME_COINS) if random.random() < 0.6 else random.choice(STOCK_SYMBOLS + CRYPTO_SYMBOLS)
 
-    # Generate realistic profit scenario
-    deposit, profit, roi, reason, style = generate_profit_scenario(symbol)
+    # Generate scenario
+    deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
 
-    # Trader + leaderboard
+    # Update leaderboard
     trader_id, trader_name = random.choice(RANKING_TRADERS)
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-    # Main profit message
+    # Build message
     msg = (
         f"📈 <b>{symbol} Profit Update</b>\n"
         f"👤 Trader: {trader_name}\n"
         f"💰 Invested: ${deposit:,}\n"
         f"🎯 Profit: ${profit:,} (+{roi}%)\n"
-        f"📊 Strategy: {style}\n"
+        f"📊 Strategy: {trading_style}\n"
         f"🔥 {reason}\n\n"
         f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
     )
@@ -811,9 +841,9 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode=constants.ParseMode.HTML
     )
 
-    await update.message.reply_text("✅ Profit update posted to group!")
+    await update.message.reply_text("✅ Manual profit update posted!")
 
-    # Extra hype message
+    # Extra hype
     if pos:
         if pos == 1:
             hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
@@ -1029,18 +1059,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        # db 
-async def resetdb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-
-    # 🔐 Replace with your own Telegram ID so randoms can’t nuke your DB
-    if user_id != "8083574070":
-        await update.message.reply_text("🚫 You are not authorized to reset the database.")
-        return
-
-    reset_database()
-    await update.message.reply_text("✅ Database has been reset and recreated.")
-# /status handler
+   
+    #/status handler
 async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         f"📈 <b>Market Overview</b> 📊\n"
