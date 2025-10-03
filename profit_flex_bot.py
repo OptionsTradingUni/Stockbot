@@ -698,18 +698,13 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     return buf
 
 # ============ PROFIT POSTING LOOP ============
+# ================================
 async def profit_posting_loop(app):
-    logger = logging.getLogger("profit_posting")
     logger.info("Profit posting task started.")
-
     while True:
         try:
-            # Random wait
-            wait_minutes = random.choices(
-                [2, 5, 6, 8, 10, 20, 25, 30, 35],
-                weights=[25, 20, 15, 15, 15, 3, 3, 2, 2],
-                k=1
-            )[0]
+            # Wait random interval
+            wait_minutes = random.choice([2, 5, 6, 8, 10, 20, 25, 30, 35])
             await asyncio.sleep(wait_minutes * 60)
 
             # Pick symbol
@@ -718,7 +713,7 @@ async def profit_posting_loop(app):
             else:
                 symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
 
-            # Profit ranges
+            # Profit range
             if symbol in MEME_COINS:
                 deposit = random.randint(500, 5000)
                 mult = random.uniform(3, 15)
@@ -727,11 +722,14 @@ async def profit_posting_loop(app):
             else:
                 r = random.random()
                 if r < 0.6:
-                    deposit = random.randint(400, 2500); mult = random.uniform(2, 6)
+                    deposit = random.randint(400, 2500)
+                    mult = random.uniform(2, 6)
                 elif r < 0.9:
-                    deposit = random.randint(3000, 7000); mult = random.uniform(2, 5)
+                    deposit = random.randint(3000, 7000)
+                    mult = random.uniform(2, 5)
                 else:
-                    deposit = random.randint(20000, 40000); mult = random.uniform(2, 4)
+                    deposit = random.randint(20000, 40000)
+                    mult = random.uniform(2, 4)
 
             profit = int((deposit * mult) // 50 * 50)
             roi = round((profit / deposit - 1) * 100, 1)
@@ -739,13 +737,13 @@ async def profit_posting_loop(app):
             trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
             reason = f"{symbol} {trading_style} setup worked perfectly! (+{roi}%)"
 
-            # Trader
+            # Pick trader
             trader_id, trader_name = random.choice(RANKING_TRADERS)
 
             # Update leaderboard
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # Full message
+            # Main profit message
             msg = (
                 f"📈 <b>{symbol} Profit Update</b>\n"
                 f"👤 Trader: {trader_name}\n"
@@ -756,31 +754,29 @@ async def profit_posting_loop(app):
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
 
-            # Send
-            try:
-                img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
-                caption = f"{symbol}: +${profit:,} (+{roi}%)"
+            # Generate profit card
+            img_buf = generate_profit_card(
+                symbol=symbol,
+                profit=profit,
+                roi=roi,
+                deposit=deposit,
+                trader_name=trader_name
+            )
 
-                await app.bot.send_photo(
-                    chat_id=TELEGRAM_CHAT_ID,
-                    photo=img_buf,
-                    caption=caption,
-                    parse_mode=constants.ParseMode.HTML
-                )
+            # ✅ Send image + full message as caption
+            await app.bot.send_photo(
+                chat_id=TELEGRAM_CHAT_ID,
+                photo=img_buf,
+                caption=msg,
+                parse_mode=constants.ParseMode.HTML
+            )
 
-                await app.bot.send_message(
-                    chat_id=TELEGRAM_CHAT_ID,
-                    text=msg,
-                    parse_mode=constants.ParseMode.HTML
-                )
+            logger.info(f"[POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → Profit ${profit:.2f}")
 
-            except Exception as e:
-                logger.error(f"Failed to send profit with image: {e}")
-
-            # Hype
+            # 🚀 Send hype message separately if leaderboard changes
             if pos:
                 if pos == 1:
-                    hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}!"
+                    hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
                 elif pos <= 3:
                     hype = f"🔥 {trader_name} broke into the Top 3 with ${profit:,}!"
                 else:
