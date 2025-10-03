@@ -859,15 +859,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
 # /start handler with Top 3 Rankings
 # -----------------------
-async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    async def alert_admin_user_action(update, action):
-    """Send an alert DM to admin whenever someone interacts with the bot"""
-    if ADMIN_ID:
-        user = update.effective_user
-        username = f"@{user.username}" if user.username else user.full_name
-        text = f"👤 {username} ({user.id}) used: {action}"
-        await update.get_bot().send_message(chat_id=ADMIN_ID, text=text)
-        
+async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):        
     chat_id = update.effective_chat.id
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
@@ -924,7 +916,16 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             })
     except Exception as e:
         logger.error(f"Error adding user {user.id}: {e}")
-        
+
+async def alert_admin_user_action(update, action):
+    """Send an alert DM to admin whenever someone interacts with the bot"""
+    if ADMIN_ID:
+        user = update.effective_user
+        username = f"@{user.username}" if user.username else user.full_name
+        text = f"👤 {username} ({user.id}) used: {action}"
+        await update.get_bot().send_message(chat_id=ADMIN_ID, text=text)
+
+
 # Callback handler for inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1137,6 +1138,7 @@ async def trade_status_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 def main():
     if TELEGRAM_TOKEN is None or TELEGRAM_CHAT_ID is None:
         raise SystemExit("TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set in .env")
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start_handler))
@@ -1147,12 +1149,12 @@ def main():
     app.add_handler(CommandHandler("resetdb", resetdb_handler))
     app.add_handler(CommandHandler("postprofit", manual_post_handler))
 
+    app.post_init = on_startup
+    app.run_polling()
+
     
     async def on_startup(app):
     logger.info("Bot started. Launching posting loop…")
     app.create_task(profit_posting_loop(app))
     if ADMIN_ID:
         await app.bot.send_message(chat_id=ADMIN_ID, text="✅ Bot is alive and posting loop started!")
-
-app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-app.post_init = on_startup
