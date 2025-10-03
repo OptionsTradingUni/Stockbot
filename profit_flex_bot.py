@@ -497,47 +497,50 @@ def save_rankings(parsed):
 
 def update_rankings_with_new_profit(trader_name, new_profit):
     """
-    Update leaderboard with accumulated profits.
-    - Adds new profit to trader's total if they exist
-    - Inserts if new trader
-    - Keeps only Top 10
-    Returns: (lines, newcomer_position or None)
+    Updates leaderboard only if profit > current lowest Top 10.
+    Keeps only Top 10.
     """
-    # ✅ Update user total in `users` table
-    with engine.begin() as conn:
-        conn.execute(
-            users.insert().values(
-                user_id=trader_name,       # using trader name as key
-                username=trader_name,
-                display_name=trader_name,
-                wins=0,
-                total_trades=0,
-                total_profit=new_profit
-            ).on_conflict_do_update(
-                index_elements=["user_id"],
-                set_={
-                    "total_profit": users.c.total_profit + new_profit
-                }
-            )
-        )
+    parsed = fetch_cached_rankings()
 
-        # ✅ Fetch top 10 by total_profit
-        result = conn.execute(
-            select(users.c.display_name, users.c.total_profit)
-            .order_by(users.c.total_profit.desc())
-            .limit(10)
-        ).all()
+    if not parsed:
+        # Seed with realistic small profits
+        selected = random.sample(RANKING_TRADERS, 10)
+        parsed = [(name, random.randint(200, 1500)) for _, name in selected]
 
-    parsed = [(row.display_name, int(row.total_profit)) for row in result]
-    lines = save_rankings(parsed)
+    # Parse back
+    clean = []
+    for line in parsed:
+        try:
+            name = line.split("—")[0].split("</b>")[0].split("<b>")[-1].strip()
+            profit = int(line.split("$")[-1].split()[0].replace(",", ""))
+            clean.append((name, profit))
+        except:
+            continue
+    parsed = clean
 
-    # ✅ Figure out this trader's position
-    pos = None
-    for i, (name, total) in enumerate(parsed, start=1):
+    # Check threshold
+    if len(parsed) >= 10:
+        threshold = parsed[-1][1]
+        if new_profit <= threshold:
+            return save_rankings(parsed), None  # ignore if not big enough
+
+    # Insert or update trader
+    found = False
+    for i, (name, profit) in enumerate(parsed):
         if name == trader_name:
-            pos = i
+            parsed[i] = (trader_name, max(profit, new_profit))  # keep higher
+            found = True
             break
+    if not found:
+        parsed.append((trader_name, new_profit))
 
+    # Sort & keep top 10
+    parsed.sort(key=lambda x: x[1], reverse=True)
+    parsed = parsed[:10]
+
+    # Save
+    lines = save_rankings(parsed)
+    pos = [p[0] for p in parsed].index(trader_name) + 1
     return lines, pos
 
 def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style):
@@ -857,8 +860,13 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 # /start handler with Top 3 Rankings
 # -----------------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await alert_admin_user_action(update, "/start command")
-    # ... (rest of your /start code)
+    async def alert_admin_user_action(update, action):
+    """Send an alert DM to admin whenever someone interacts with the bot"""
+    if ADMIN_ID:
+        user = update.effective_user
+        username = f"@{user.username}" if user.username else user.full_name
+        text = f"👤 {username} ({user.id}) used: {action}"
+        await update.get_bot().send_message(chat_id=ADMIN_ID, text=text)
     chat_id = update.effective_chat.id
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
@@ -1140,13 +1148,10 @@ def main():
 
     
     async def on_startup(app):
-        app.create_task(profit_posting_loop(app))
-        logger.info("Profit posting task scheduled on startup.")
+    logger.info("Bot started. Launching posting loop…")
+    app.create_task(profit_posting_loop(app))
+    if ADMIN_ID:
+        await app.bot.send_message(chat_id=ADMIN_ID, text="✅ Bot is alive and posting loop started!")
 
-    app.post_init = on_startup
-
-    logger.info("Bot starting...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+app.post_init = on_startup
