@@ -720,7 +720,7 @@ def update_rankings_with_new_profit(trader_name, profit):
 
 # ======================
 
-ADMIN_ID = os.getenv("8083574070")
+ADMIN_ID = os.getenv("ADMIN_ID")
 
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
