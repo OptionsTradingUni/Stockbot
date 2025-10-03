@@ -624,31 +624,33 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
     """
     return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
 
-import os, io, random, asyncio, logging
-import numpy as np
+import io, random
 from datetime import datetime, timezone
 from PIL import Image, ImageDraw, ImageFont
-from telegram import constants
 
+# ============ FONT LOADER ============
 def load_font(size, bold=False):
+    """Try to load DejaVu font, fallback to default if missing (Railway safe)."""
     try:
         if bold:
             return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
         else:
             return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-    except Exception:
+    except:
         return ImageFont.load_default()
 
-# ======================
-# Profit card generator
-# ======================
+# ============ IMAGE GENERATOR ============
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
+    """
+    Generate a compact, realistic profit report card image.
+    Returns an in-memory PNG buffer.
+    """
     W, H = 600, 800  # compact canvas
 
-    # Fonts
-    big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
-    med_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
-    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
+    # Fonts (safe loader)
+    big_font = load_font(60, bold=True)
+    med_font = load_font(32, bold=True)
+    small_font = load_font(22)
 
     # Background gradient
     bg = Image.new("RGB", (W, H), (20, 60, 180))
@@ -723,47 +725,48 @@ async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
         try:
-            # Interval: 2–10 mins common, 20–30 mins uncommon
-            wait_minutes = random.choice([2,3,5,6,8,10,20,25,30])
+            # Weighted wait: 2–10min common, 20–30min uncommon
+            if random.random() < 0.8:
+                wait_minutes = random.randint(2, 10)
+            else:
+                wait_minutes = random.randint(20, 30)
             await asyncio.sleep(wait_minutes * 60)
 
-            # Symbol
+            # Pick symbol
             symbol = random.choice(MEME_COINS) if random.random() < 0.7 else random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
 
             # Profit ranges
             if symbol in MEME_COINS:
                 deposit = random.randint(500, 5000)
                 mult = random.uniform(3, 15)
-                if random.random() < 0.05:
+                if random.random() < 0.05:  # rare moonshot
                     mult = random.uniform(20, 60)
             else:
                 r = random.random()
                 if r < 0.6:
-                    deposit = random.randint(400, 2500)
-                    mult = random.uniform(2, 6)
+                    deposit = random.randint(400, 2500); mult = random.uniform(2, 6)
                 elif r < 0.9:
-                    deposit = random.randint(3000, 7000)
-                    mult = random.uniform(2, 5)
+                    deposit = random.randint(3000, 7000); mult = random.uniform(2, 5)
                 else:
-                    deposit = random.randint(20000, 40000)
-                    mult = random.uniform(2, 4)
+                    deposit = random.randint(20000, 40000); mult = random.uniform(2, 4)
 
             profit = int((deposit * mult) // 50 * 50)
             roi = round((profit / deposit - 1) * 100, 1)
-
             trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
-            trader_id, trader_name = random.choice(RANKING_TRADERS)
+            reason = f"{symbol} {trading_style} setup worked perfectly! (+{roi}%)"
 
-            # Update leaderboard
+            # Trader + leaderboard
+            trader_id, trader_name = random.choice(RANKING_TRADERS)
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # Text message
+            # Main profit message
             msg = (
                 f"📈 <b>{symbol} Profit Update</b>\n"
                 f"👤 Trader: {trader_name}\n"
                 f"💰 Invested: ${deposit:,}\n"
                 f"🎯 Profit: ${profit:,} (+{roi}%)\n"
-                f"📊 Strategy: {trading_style}\n\n"
+                f"📊 Strategy: {trading_style}\n"
+                f"🔥 {reason}\n\n"
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
 
@@ -778,7 +781,12 @@ async def profit_posting_loop(app):
                 parse_mode=constants.ParseMode.HTML
             )
 
-            # Hype
+            # DM admin confirmation
+            if ADMIN_ID:
+                confirm = f"✅ Posted {symbol} update at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
+                await app.bot.send_message(chat_id=ADMIN_ID, text=confirm)
+
+            # Hype message if leaderboard changes
             if pos:
                 if pos == 1:
                     hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
@@ -788,32 +796,33 @@ async def profit_posting_loop(app):
                     hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
                 await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
 
-            # Confirmation DM
-            if ADMIN_ID:
-                await app.bot.send_message(chat_id=ADMIN_ID, text=f"✅ Posted {symbol} at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}")
-
+        except asyncio.CancelledError:
+            logger.info("Profit posting loop cancelled.")
+            break
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
             if ADMIN_ID:
-                await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
+                await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error: {e}")
             await asyncio.sleep(5)
 
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
+    # Restrict to admin
     if user_id != str(ADMIN_ID):
-        await update.message.reply_text("🚫 You are not authorized to trigger profit posts.")
+        await update.message.reply_text("🚫 You are not authorized to trigger manual posts.")
         return
 
-    # Generate instant post
+    # Pick symbol
     symbol = random.choice(MEME_COINS) if random.random() < 0.7 else random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
+
     deposit = random.randint(500, 5000)
     mult = random.uniform(2, 8)
     profit = int((deposit * mult) // 50 * 50)
     roi = round((profit / deposit - 1) * 100, 1)
     trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
-    trader_id, trader_name = random.choice(RANKING_TRADERS)
 
+    trader_id, trader_name = random.choice(RANKING_TRADERS)
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
     msg = (
@@ -834,6 +843,9 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode=constants.ParseMode.HTML
     )
 
+    await update.message.reply_text("✅ Profit update posted to group!")
+
+    # Extra hype message
     if pos:
         if pos == 1:
             hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
@@ -842,19 +854,6 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
         await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
-
-    await update.message.reply_text("✅ Profit update posted to group!")
-    
-async def alert_admin_user_action(update: Update, action: str):
-    """Send you (admin) a DM whenever a user interacts with bot"""
-    if ADMIN_ID:
-        user = update.effective_user
-        name = user.first_name or user.username or "Unknown"
-        text = f"👀 User <b>{name}</b> ({user.id}) triggered: {action}"
-        try:
-            await update.get_bot().send_message(chat_id=ADMIN_ID, text=text, parse_mode=constants.ParseMode.HTML)
-        except Exception as e:
-            logger.error(f"Failed to notify admin: {e}")
 # /start handler with Top 3 Rankings
 # -----------------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
