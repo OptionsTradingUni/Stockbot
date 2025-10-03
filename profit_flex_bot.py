@@ -185,6 +185,22 @@ def reset_database():
         conn.execute(delete(success_stories))
         conn.execute(delete(rankings_cache))
 
+    # ✅ Seed new leaderboard with random traders
+    selected = random.sample(RANKING_TRADERS, 10)
+    initial_board = [(name, random.randint(2000, 10000)) for _, name in selected]
+    save_rankings(initial_board)
+
+    logger.info("✅ FULL reset: schema dropped, tables recreated, all cleared, leaderboard reseeded.")
+    # Recreate schema
+    metadata.create_all(engine)
+
+    # Clear everything just in case
+    with engine.begin() as conn:
+        conn.execute(delete(posts))
+        conn.execute(delete(users))
+        conn.execute(delete(success_stories))
+        conn.execute(delete(rankings_cache))
+
     # ✅ Seed new leaderboard
     selected = random.sample(RANKING_TRADERS, 10)
     initial_board = [(name, random.randint(2000, 10000)) for _, name in selected]
@@ -534,14 +550,14 @@ def save_rankings(parsed):
 
 def update_rankings_with_new_profit(trader_name, new_profit):
     """
-    Update leaderboard:
-    - Add profit to existing trader’s cumulative total.
-    - If new trader enters, push others down instead of wiping.
-    - Keep leaderboard sorted by cumulative profit.
+    Update leaderboard cumulative totals.
+    - If trader exists: add profit to their total
+    - If new: append
+    - Keep only Top 10 sorted
     """
     parsed = fetch_cached_rankings()
 
-    # Parse existing leaderboard
+    # Parse leaderboard back into tuples
     clean = []
     for line in parsed:
         try:
@@ -551,7 +567,7 @@ def update_rankings_with_new_profit(trader_name, new_profit):
         except:
             continue
 
-    # If empty, seed with randoms
+    # If empty, seed new board
     if not clean:
         selected = random.sample(RANKING_TRADERS, 10)
         clean = [(name, random.randint(2000, 8000)) for _, name in selected]
@@ -560,23 +576,20 @@ def update_rankings_with_new_profit(trader_name, new_profit):
     found = False
     for i, (name, total) in enumerate(clean):
         if name == trader_name:
-            clean[i] = (trader_name, total + new_profit)  # add cumulative
+            clean[i] = (trader_name, total + new_profit)
             found = True
             break
-
     if not found:
         clean.append((trader_name, new_profit))
 
-    # Sort by cumulative profit
+    # Sort by profit (desc) & keep top 10
     clean.sort(key=lambda x: x[1], reverse=True)
-
-    # Keep only top 10 (others drop out naturally)
     clean = clean[:10]
 
-    # Save leaderboard
+    # Save back
     lines = save_rankings(clean)
 
-    # Return formatted lines + trader’s new position
+    # Get trader’s position
     pos = None
     for i, (name, _) in enumerate(clean, start=1):
         if name == trader_name:
@@ -740,28 +753,6 @@ def short_highlight(symbol: str, profit: float, roi: float) -> str:
     return f"+${profit:,.0f} on {symbol} • ROI {roi:.1f}% 🔥"
 
 # ======================
-# Dummy leaderboard helpers
-# (replace with your DB-backed versions)
-# ======================
-def update_rankings_with_new_profit(trader_name, profit):
-    """
-    Example dummy leaderboard: just return a static top 10.
-    Replace this with your real DB logic.
-    """
-    sample = [
-        "🥇 Eva Park — $60,050 profit",
-        "🥈 Ibrahim Butler — $52,050 profit",
-        "🥉 Li Hui — $39,850 profit",
-        f"4. {trader_name} — ${profit:,} profit",
-        "5. Everly Baker — $29,800 profit",
-        "6. SungHo Henderson — $27,050 profit",
-        "7. Robert Foster — $12,750 profit",
-        "8. Mustafa Gonzalez — $10,800 profit",
-        "9. Ava Alvarez — $10,550 profit",
-        "10. Takashi Gupta — $8,850 profit"
-    ]
-    return sample, 4  # fake rank position
-
 # ======================
 
 ADMIN_ID = os.getenv("ADMIN_ID")
