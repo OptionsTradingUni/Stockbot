@@ -309,83 +309,61 @@ def fetch_recent_profits():
 # Helper: Generate profit scenario with realistic gains
 def generate_profit_scenario(symbol):
     """
-    Generate realistic profit scenarios:
-    - Common profits: 4k–18k
-    - Small occasional: 1k–3k
-    - Rare big: 20k–40k
-    - Very rare moonshot: 50k+
+    Generate realistic profit scenarios with weighted probabilities.
+    Keeps small/medium wins common, big moonshots rare.
     """
     recent_profits = fetch_recent_profits()
 
     # --- MEME COINS ---
     if symbol in MEME_COINS:
-        deposit = random.randint(500, 5000)
-
+        deposit = random.randint(300, 4000)
         r = random.random()
-        if r < 0.10:  # 10% → small profits (1–3k)
+        if r < 0.60:      # 60% common
             mult = random.uniform(2, 6)
-        elif r < 0.80:  # 70% → normal (4–18k range)
-            mult = random.uniform(5, 15)
-        elif r < 0.95:  # 15% → bigger (20–40k)
-            mult = random.uniform(15, 30)
-        else:  # 5% → moonshot 50k+
-            mult = random.uniform(40, 80)
-
-        profit = int((deposit * mult) // 50 * 50)
+        elif r < 0.85:    # 25% uncommon
+            mult = random.uniform(6, 10)
+        elif r < 0.95:    # 10% rare
+            mult = random.uniform(10, 15)
+        else:             # 5% moonshot
+            mult = random.uniform(15, 20)
 
     # --- STOCKS / CRYPTO ---
     else:
-        deposit = random.randint(500, 3000)
+        deposit = random.randint(500, 6000)
         r = random.random()
-        if r < 0.15:  # 15% → 1–3k
-            mult = random.uniform(2, 4)
-        elif r < 0.85:  # 70% → 4–18k
-            mult = random.uniform(2.5, 6)
-        elif r < 0.95:  # 10% → 20–40k
-            deposit = random.randint(5000, 15000)
-            mult = random.uniform(2, 4)
-        else:  # 5% → rare 50k+
+        if r < 0.70:      # 70% common
+            mult = random.uniform(2, 5)
+        elif r < 0.90:    # 20% uncommon
+            deposit = random.randint(5000, 12000)
+            mult = random.uniform(6, 10)
+        elif r < 0.98:    # 8% whale
             deposit = random.randint(10000, 20000)
-            mult = random.uniform(3, 5)
+            mult = random.uniform(10, 15)
+        else:             # 2% insane spike
+            deposit = random.randint(15000, 25000)
+            mult = random.uniform(15, 20)
 
-        profit = int((deposit * mult) // 50 * 50)
-
-    # --- Avoid duplicates ---
+    # Calculate profit + ROI
+    profit = int((deposit * mult) // 50 * 50)
     tries = 0
     while profit in recent_profits and tries < 10:
         profit = int((deposit * random.uniform(2, 8)) // 50 * 50)
         tries += 1
 
-    percentage_gain = round((profit / deposit - 1) * 100, 1)
+    roi = round((profit / deposit - 1) * 100, 1)
 
-    # --- Narratives ---
+    # Trading style & reason
     if symbol in STOCK_SYMBOLS:
-        trading_style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
-        reasons = [
-            f"{symbol} {trading_style} climbed on momentum!",
-            f"Solid {trading_style} execution on {symbol}.",
-            f"{symbol} strength confirmed by clean {trading_style}.",
-            f"Market favored {symbol} with strong {trading_style} follow-through.",
-        ]
+        style = random.choice(["Scalping", "Day Trading", "Swing Trade", "Position Trade"])
+        reason = f"{symbol} {style} setup delivered strong returns!"
     elif symbol in CRYPTO_SYMBOLS:
-        trading_style = random.choice(["HODL", "Swing Trade", "DCA", "Arbitrage", "Leverage Trading"])
-        reasons = [
-            f"{symbol} {trading_style} rode a liquidity wave.",
-            f"{trading_style} on {symbol} aligned with breakout.",
-            f"{symbol} breakout + {trading_style} worked well.",
-            f"Disciplined {trading_style} structure lifted {symbol}.",
-        ]
+        style = random.choice(["HODL", "Swing Trade", "Leverage Play", "DCA"])
+        reason = f"{symbol} {style} aligned perfectly with market move!"
     else:
-        trading_style = random.choice(["Early Sniping", "Pump Riding", "Community Flip", "Airdrop Hunt"])
-        reasons = [
-            f"{symbol} squeeze extended with {trading_style}.",
-            f"Community traction sent {symbol} higher.",
-            f"{symbol} trend pop after fresh flows.",
-            f"Smart {trading_style} timing on {symbol}.",
-        ]
+        style = random.choice(["Early Sniping", "Pump Riding", "Community Flip", "Airdrop Hunt"])
+        reason = f"{symbol} {style} caught insane momentum!"
 
-    reason = random.choice(reasons) + f" (+{percentage_gain}%)"
-    return deposit, profit, percentage_gain, reason, trading_style
+    return deposit, profit, roi, reason, style
 
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
@@ -497,50 +475,55 @@ def save_rankings(parsed):
 
 def update_rankings_with_new_profit(trader_name, new_profit):
     """
-    Updates leaderboard only if profit > current lowest Top 10.
-    Keeps only Top 10.
+    Update leaderboard:
+    - Add profit to existing trader’s cumulative total.
+    - If new trader enters, push others down instead of wiping.
+    - Keep leaderboard sorted by cumulative profit.
     """
     parsed = fetch_cached_rankings()
 
-    if not parsed:
-        # Seed with realistic small profits
-        selected = random.sample(RANKING_TRADERS, 10)
-        parsed = [(name, random.randint(200, 1500)) for _, name in selected]
-
-    # Parse back
+    # Parse existing leaderboard
     clean = []
     for line in parsed:
         try:
-            name = line.split("—")[0].split("</b>")[0].split("<b>")[-1].strip()
+            name = line.split("—")[0].split("</b>")[-1].split("<b>")[-1].strip()
             profit = int(line.split("$")[-1].split()[0].replace(",", ""))
             clean.append((name, profit))
         except:
             continue
-    parsed = clean
 
-    # Check threshold
-    if len(parsed) >= 10:
-        threshold = parsed[-1][1]
-        if new_profit <= threshold:
-            return save_rankings(parsed), None  # ignore if not big enough
+    # If empty, seed with randoms
+    if not clean:
+        selected = random.sample(RANKING_TRADERS, 10)
+        clean = [(name, random.randint(2000, 8000)) for _, name in selected]
 
-    # Insert or update trader
+    # Update or add trader
     found = False
-    for i, (name, profit) in enumerate(parsed):
+    for i, (name, total) in enumerate(clean):
         if name == trader_name:
-            parsed[i] = (trader_name, max(profit, new_profit))  # keep higher
+            clean[i] = (trader_name, total + new_profit)  # add cumulative
             found = True
             break
+
     if not found:
-        parsed.append((trader_name, new_profit))
+        clean.append((trader_name, new_profit))
 
-    # Sort & keep top 10
-    parsed.sort(key=lambda x: x[1], reverse=True)
-    parsed = parsed[:10]
+    # Sort by cumulative profit
+    clean.sort(key=lambda x: x[1], reverse=True)
 
-    # Save
-    lines = save_rankings(parsed)
-    pos = [p[0] for p in parsed].index(trader_name) + 1
+    # Keep only top 10 (others drop out naturally)
+    clean = clean[:10]
+
+    # Save leaderboard
+    lines = save_rankings(clean)
+
+    # Return formatted lines + trader’s new position
+    pos = None
+    for i, (name, _) in enumerate(clean, start=1):
+        if name == trader_name:
+            pos = i
+            break
+
     return lines, pos
 
 def craft_profit_message(symbol, deposit, profit, percentage_gain, reason, trading_style):
@@ -729,34 +712,14 @@ async def profit_posting_loop(app):
     while True:
         try:
             # Weighted wait: 2–10min common, 20–30min uncommon
-            if random.random() < 0.8:
-                wait_minutes = random.randint(2, 10)
-            else:
-                wait_minutes = random.randint(20, 30)
+            wait_minutes = random.randint(2, 10) if random.random() < 0.8 else random.randint(20, 30)
             await asyncio.sleep(wait_minutes * 60)
 
-            # Pick symbol
+            # Pick a symbol
             symbol = random.choice(MEME_COINS) if random.random() < 0.7 else random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
 
-            # Profit ranges
-            if symbol in MEME_COINS:
-                deposit = random.randint(500, 5000)
-                mult = random.uniform(3, 15)
-                if random.random() < 0.05:  # rare moonshot
-                    mult = random.uniform(20, 60)
-            else:
-                r = random.random()
-                if r < 0.6:
-                    deposit = random.randint(400, 2500); mult = random.uniform(2, 6)
-                elif r < 0.9:
-                    deposit = random.randint(3000, 7000); mult = random.uniform(2, 5)
-                else:
-                    deposit = random.randint(20000, 40000); mult = random.uniform(2, 4)
-
-            profit = int((deposit * mult) // 50 * 50)
-            roi = round((profit / deposit - 1) * 100, 1)
-            trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
-            reason = f"{symbol} {trading_style} setup worked perfectly! (+{roi}%)"
+            # Generate realistic profit scenario
+            deposit, profit, roi, reason, style = generate_profit_scenario(symbol)
 
             # Trader + leaderboard
             trader_id, trader_name = random.choice(RANKING_TRADERS)
@@ -768,7 +731,7 @@ async def profit_posting_loop(app):
                 f"👤 Trader: {trader_name}\n"
                 f"💰 Invested: ${deposit:,}\n"
                 f"🎯 Profit: ${profit:,} (+{roi}%)\n"
-                f"📊 Strategy: {trading_style}\n"
+                f"📊 Strategy: {style}\n"
                 f"🔥 {reason}\n\n"
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
@@ -816,29 +779,31 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("🚫 You are not authorized to trigger manual posts.")
         return
 
-    # Pick symbol
+    # Pick a symbol
     symbol = random.choice(MEME_COINS) if random.random() < 0.7 else random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
 
-    deposit = random.randint(500, 5000)
-    mult = random.uniform(2, 8)
-    profit = int((deposit * mult) // 50 * 50)
-    roi = round((profit / deposit - 1) * 100, 1)
-    trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
+    # Generate realistic profit scenario
+    deposit, profit, roi, reason, style = generate_profit_scenario(symbol)
 
+    # Trader + leaderboard
     trader_id, trader_name = random.choice(RANKING_TRADERS)
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
+    # Main profit message
     msg = (
         f"📈 <b>{symbol} Profit Update</b>\n"
         f"👤 Trader: {trader_name}\n"
         f"💰 Invested: ${deposit:,}\n"
         f"🎯 Profit: ${profit:,} (+{roi}%)\n"
-        f"📊 Strategy: {trading_style}\n\n"
+        f"📊 Strategy: {style}\n"
+        f"🔥 {reason}\n\n"
         f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
     )
 
+    # Generate card
     img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
+    # Send to group
     await context.bot.send_photo(
         chat_id=TELEGRAM_CHAT_ID,
         photo=img_buf,
