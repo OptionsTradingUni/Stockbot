@@ -165,14 +165,29 @@ metadata.create_all(engine)
 def reset_database():
     """
     Drops ALL tables in Postgres (by dropping schema public),
-    then recreates them from metadata and reseeds.
+    then recreates them from metadata and reseeds leaderboard/posts.
     """
     with engine.begin() as conn:
         # Drop + recreate schema
         conn.execute(text("DROP SCHEMA public CASCADE;"))
         conn.execute(text("CREATE SCHEMA public;"))
 
-    async def resetdb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Recreate schema
+    metadata.create_all(engine)
+
+    # ✅ Seed Top 10 leaderboard immediately
+    selected = random.sample(RANKING_TRADERS, 10)
+    initial_board = [(name, random.randint(2000, 10000)) for _, name in selected]
+    save_rankings(initial_board)
+
+    logger.info("✅ FULL Database reset, schema recreated, leaderboard reseeded.")
+
+
+# -------------------------
+# /resetdb handler
+# -------------------------
+
+async def resetdb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
     # 🔐 Restrict to admin only
@@ -182,16 +197,17 @@ def reset_database():
 
     try:
         reset_database()
-        await update.message.reply_text("✅ Database has been reset and recreated.")
+        await update.message.reply_text("✅ Database has been reset, schema recreated, and leaderboard reseeded.")
 
-        # DM admin too
+        # DM admin confirmation
         if ADMIN_ID:
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
-                text="⚡️ DB Reset completed successfully. Schema rebuilt + traders/posts reseeded."
+                text="⚡️ DB Reset completed successfully → Top 10 traders reseeded."
             )
     except Exception as e:
         err = f"❌ Reset failed: {e}"
+        logger.error(err)
         await update.message.reply_text(err)
         if ADMIN_ID:
             await context.bot.send_message(chat_id=ADMIN_ID, text=err)
