@@ -839,47 +839,6 @@ async def profit_posting_loop(app):
         except Exception as e:
             logger.error(f"Error in posting loop: {e}")
             await asyncio.sleep(5)
-
-
-async def seed_rankings(update, context):
-    """Prefill leaderboard with realistic Top 10 traders."""
-    with engine.begin() as conn:
-        seeded = []
-        # 7 normal traders (3k–10k)
-        for trader_id, trader_name in random.sample(RANKING_TRADERS, 7):
-            profit = random.randint(3000, 10000)
-            conn.execute(text("""
-                INSERT INTO rankings (trader_id, trader_name, profit)
-                VALUES (:id, :name, :profit)
-                ON CONFLICT(trader_id) DO UPDATE SET profit=EXCLUDED.profit
-            """), {"id": trader_id, "name": trader_name, "profit": profit})
-            seeded.append(f"{trader_name} — ${profit:,}")
-
-        # 2 smaller ones (1k–3k)
-        for trader_id, trader_name in random.sample(RANKING_TRADERS, 2):
-            profit = random.randint(1000, 3000)
-            conn.execute(text("""
-                INSERT INTO rankings (trader_id, trader_name, profit)
-                VALUES (:id, :name, :profit)
-                ON CONFLICT(trader_id) DO UPDATE SET profit=EXCLUDED.profit
-            """), {"id": trader_id, "name": trader_name, "profit": profit})
-            seeded.append(f"{trader_name} — ${profit:,}")
-
-        # 1 whale (20k–30k)
-        trader_id, trader_name = random.choice(RANKING_TRADERS)
-        profit = random.randint(20000, 30000)
-        conn.execute(text("""
-            INSERT INTO rankings (trader_id, trader_name, profit)
-            VALUES (:id, :name, :profit)
-            ON CONFLICT(trader_id) DO UPDATE SET profit=EXCLUDED.profit
-        """), {"id": trader_id, "name": trader_name, "profit": profit})
-        seeded.append(f"{trader_name} — ${profit:,} 🐋")
-
-    msg = "✅ Seeded Top 10 Leaderboard:\n\n" + "\n".join(seeded)
-    await context.bot.send_message(
-        chat_id=update.effective_user.id,
-        text=msg
-    )
 # -----------------------
 # /start handler with Top 3 Rankings
 # -----------------------
@@ -1157,7 +1116,6 @@ def main():
     app.add_handler(CommandHandler("trade_status", trade_status_handler))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("resetdb", resetdb_handler))
-    app.add_handler(CommandHandler("seed_rankings", seed_rankings))
     
     async def on_startup(app):
         app.create_task(profit_posting_loop(app))
