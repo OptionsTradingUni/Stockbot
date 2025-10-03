@@ -623,16 +623,16 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
     return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
 
 
-import random, io
-import matplotlib.pyplot as plt
-import numpy as np
-from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
-
 from PIL import Image, ImageDraw, ImageFont
 import random, io
-import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
+
+def _load_font(path, size):
+    """Try loading font, fallback to default if not found."""
+    try:
+        return ImageFont.truetype(path, size)
+    except:
+        return ImageFont.load_default()
 
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
@@ -645,19 +645,18 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     brokers = ["Webull", "Robinhood", "E*TRADE", "Fidelity", "Thinkorswim"]
     broker = random.choice(brokers)
 
-    # Fake timestamp
-    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    # Fake timestamp (fixed for UTC warning)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    # Fonts
-    big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
-    med_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
-    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 26)
+    # Fonts (safe loader)
+    big_font = _load_font("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
+    med_font = _load_font("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
+    small_font = _load_font("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 26)
 
     # Background gradient (blue Webull-style)
     bg = Image.new("RGB", (W, H), (25, 60, 180))
     gradient = Image.new("RGB", (1, H))
     for y in range(H):
-        # darker bottom for readability
         gradient.putpixel((0, y), (20, 40 + y // 6, 120 + y // 8))
     gradient = gradient.resize((W, H))
     bg = Image.blend(bg, gradient, 0.7)
@@ -674,7 +673,7 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     draw.text((W//2, 650), f"ROI: {roi:.1f}%", fill="#f59e0b", font=med_font, anchor="mm")
     draw.text((W//2, 720), f"Deposit: ${deposit:,}", fill=(30, 30, 30), font=med_font, anchor="mm")
 
-    # === Footer Strip ===
+    # Footer strip
     footer_height = 110
     overlay = Image.new("RGBA", (W, footer_height), (0, 0, 0, 140))  # semi-transparent black
     bg.paste(overlay, (0, H-footer_height), overlay)
@@ -687,7 +686,7 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
               broker,
               fill="#22c55e", font=small_font, anchor="mm")
 
-    # Save to memory
+    # Save to memory buffer
     buf = io.BytesIO()
     bg.save(buf, format="PNG")
     buf.seek(0)
@@ -770,7 +769,7 @@ async def profit_posting_loop(app):
                     parse_mode=constants.ParseMode.HTML
                 )
 
-                if caption != msg:  # send full message after if truncated
+                if caption != msg:  # send full message if truncated
                     await app.bot.send_message(
                         chat_id=TELEGRAM_CHAT_ID,
                         text=msg,
