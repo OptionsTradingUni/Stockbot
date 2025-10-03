@@ -634,6 +634,10 @@ def _load_font(path, size):
     except:
         return ImageFont.load_default()
 
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import random, io
+from datetime import datetime
+
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
     Generate a clean profit report image (Webull/Robinhood style).
@@ -645,13 +649,13 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     brokers = ["Webull", "Robinhood", "E*TRADE", "Fidelity", "Thinkorswim"]
     broker = random.choice(brokers)
 
-    # Fake timestamp (fixed for UTC warning)
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    # Fake timestamp
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
 
-    # Fonts (safe loader)
-    big_font = _load_font("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
-    med_font = _load_font("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
-    small_font = _load_font("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 26)
+    # Fonts
+    big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 92)
+    med_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
+    small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
 
     # Background gradient (blue Webull-style)
     bg = Image.new("RGB", (W, H), (25, 60, 180))
@@ -663,30 +667,43 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
 
     draw = ImageDraw.Draw(bg)
 
-    # White panel in center
-    panel = Image.new("RGB", (W - 120, H - 600), "white")
-    bg.paste(panel, (60, 300))
+    # === White Panel with Shadow ===
+    panel_width, panel_height = W - 120, 520
+    panel_x, panel_y = 60, 340
 
-    # Main text
-    draw.text((W//2, 360), f"{symbol} Profit Report", fill=(20, 40, 80), font=med_font, anchor="mm")
-    draw.text((W//2, 500), f"+${profit:,.0f}", fill="#22c55e", font=big_font, anchor="mm")
-    draw.text((W//2, 650), f"ROI: {roi:.1f}%", fill="#f59e0b", font=med_font, anchor="mm")
-    draw.text((W//2, 720), f"Deposit: ${deposit:,}", fill=(30, 30, 30), font=med_font, anchor="mm")
+    # Shadow
+    shadow = Image.new("RGBA", (panel_width+20, panel_height+20), (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow)
+    shadow_draw.rounded_rectangle((0, 0, panel_width, panel_height), radius=30, fill=(0, 0, 0, 180))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(12))
+    bg.paste(shadow, (panel_x-10, panel_y-10), shadow)
 
-    # Footer strip
-    footer_height = 110
-    overlay = Image.new("RGBA", (W, footer_height), (0, 0, 0, 140))  # semi-transparent black
+    # Panel
+    panel = Image.new("RGB", (panel_width, panel_height), "white")
+    panel_draw = ImageDraw.Draw(panel)
+    panel_draw.rounded_rectangle((0, 0, panel_width, panel_height), radius=30, outline=(220, 220, 220), width=3)
+    bg.paste(panel, (panel_x, panel_y))
+
+    # === Main Text ===
+    draw.text((W//2, 380), f"{symbol} Profit Report", fill=(20, 40, 80), font=med_font, anchor="ma")
+    draw.text((W//2, 520), f"+${profit:,.0f}", fill="#22c55e", font=big_font, anchor="ma")
+    draw.text((W//2, 660), f"ROI: {roi:.1f}%", fill="#f59e0b", font=med_font, anchor="ma")
+    draw.text((W//2, 740), f"Deposit: ${deposit:,}", fill=(30, 30, 30), font=med_font, anchor="ma")
+
+    # === Footer Strip ===
+    footer_height = 120
+    overlay = Image.new("RGBA", (W, footer_height), (0, 0, 0, 200))  # dark strong contrast
     bg.paste(overlay, (0, H-footer_height), overlay)
 
     # Footer text
-    draw.text((W//2, H-80),
+    draw.text((W//2, H-75),
               f"{trader_name} • {ts}",
               fill="white", font=small_font, anchor="mm")
     draw.text((W//2, H-40),
               broker,
               fill="#22c55e", font=small_font, anchor="mm")
 
-    # Save to memory buffer
+    # Save to memory
     buf = io.BytesIO()
     bg.save(buf, format="PNG")
     buf.seek(0)
