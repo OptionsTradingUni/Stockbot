@@ -719,8 +719,9 @@ def update_rankings_with_new_profit(trader_name, profit):
     return sample, 4  # fake rank position
 
 # ======================
-# Posting loop
-# ======================
+
+ADMIN_ID = os.getenv("8083574070")
+
 async def profit_posting_loop(app):
     logger.info("Profit posting task started.")
     while True:
@@ -728,10 +729,13 @@ async def profit_posting_loop(app):
             wait_minutes = random.choice([2, 5, 6, 8, 10, 20, 25, 30, 35])
             await asyncio.sleep(wait_minutes * 60)
 
-            # Symbol
-            symbol = random.choice(MEME_COINS if random.random() < 0.7 else [s for s in ALL_SYMBOLS if s not in MEME_COINS])
+            # Pick symbol
+            if random.random() < 0.7:
+                symbol = random.choice(MEME_COINS)
+            else:
+                symbol = random.choice([s for s in ALL_SYMBOLS if s not in MEME_COINS])
 
-            # Deposit + profit range
+            # Profit ranges
             if symbol in MEME_COINS:
                 deposit = random.randint(500, 5000)
                 mult = random.uniform(3, 15)
@@ -755,13 +759,9 @@ async def profit_posting_loop(app):
             trading_style = random.choice(["Scalping", "Day Trade", "Swing", "Position"])
             reason = f"{symbol} {trading_style} setup worked perfectly! (+{roi}%)"
 
-            # Trader
             trader_id, trader_name = random.choice(RANKING_TRADERS)
-
-            # Leaderboard
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # Message
             msg = (
                 f"📈 <b>{symbol} Profit Update</b>\n"
                 f"👤 Trader: {trader_name}\n"
@@ -772,23 +772,26 @@ async def profit_posting_loop(app):
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
 
-            # Generate card
-            img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
+            img_buf = generate_profit_card(
+                symbol=symbol,
+                profit=profit,
+                roi=roi,
+                deposit=deposit,
+                trader_name=trader_name
+            )
 
-            # ✅ Safe caption
-            caption = msg if len(msg) < 950 else short_highlight(symbol, profit, roi)
-
+            # ✅ Post in group
             await app.bot.send_photo(
                 chat_id=TELEGRAM_CHAT_ID,
                 photo=img_buf,
-                caption=caption,
+                caption=msg,
                 parse_mode=constants.ParseMode.HTML
             )
 
-            if caption != msg:
-                await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode=constants.ParseMode.HTML)
-
-            logger.info(f"[POSTED] {symbol} {trading_style} Deposit ${deposit:.2f} → Profit ${profit:.2f}")
+            # ✅ Confirmation DM
+            if ADMIN_ID:
+                confirm = f"✅ Posted {symbol} profit update at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
+                await app.bot.send_message(chat_id=ADMIN_ID, text=confirm)
 
             # 🚀 Hype message
             if pos:
@@ -804,11 +807,28 @@ async def profit_posting_loop(app):
             logger.info("Profit posting loop cancelled.")
             break
         except Exception as e:
-            logger.error(f"Error in posting loop: {e.__class__.__name__}: {e}\n{traceback.format_exc()}")
+            logger.error(f"Error in posting loop: {e}")
+            # ❌ Send error alert to admin DM
+            if ADMIN_ID:
+                await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
             await asyncio.sleep(5)
+
+
+async def alert_admin_user_action(update: Update, action: str):
+    """Send you (admin) a DM whenever a user interacts with bot"""
+    if ADMIN_ID:
+        user = update.effective_user
+        name = user.first_name or user.username or "Unknown"
+        text = f"👀 User <b>{name}</b> ({user.id}) triggered: {action}"
+        try:
+            await update.get_bot().send_message(chat_id=ADMIN_ID, text=text, parse_mode=constants.ParseMode.HTML)
+        except Exception as e:
+            logger.error(f"Failed to notify admin: {e}")
 # /start handler with Top 3 Rankings
 # -----------------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await alert_admin_user_action(update, "/start command")
+    # ... (rest of your /start code)
     chat_id = update.effective_chat.id
     user = update.effective_user
     name = user.first_name or user.username or "Trader"
@@ -869,6 +889,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Callback handler for inline buttons
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
+    await alert_admin_user_action(update, f"Pressed button: {query.data}")
+    # ... (rest of your button code)
+# query = update.callback_query
     await query.answer()
     data = query.data
 
