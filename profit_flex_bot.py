@@ -763,14 +763,14 @@ async def profit_posting_loop(app):
             wait_minutes = random.randint(2, 10) if random.random() < 0.8 else random.randint(20, 30)
             await asyncio.sleep(wait_minutes * 60)
 
-            # Pick symbol
+            # 🎯 Weighted posting ratio: 50% stocks, 40% meme coins, 10% crypto
             r = random.random()
-if r < 0.5:
-    symbol = random.choice(STOCK_SYMBOLS)
-elif r < 0.9:
-    symbol = random.choice(MEME_COINS)
-else:
-    symbol = random.choice(CRYPTO_SYMBOLS)
+            if r < 0.5:
+                symbol = random.choice(STOCK_SYMBOLS)
+            elif r < 0.9:
+                symbol = random.choice(MEME_COINS)
+            else:
+                symbol = random.choice(CRYPTO_SYMBOLS)
 
             # Generate profit scenario
             deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
@@ -790,7 +790,7 @@ else:
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
 
-            # Generate card
+            # Generate image card
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
             # Send to group
@@ -801,19 +801,19 @@ else:
                 parse_mode=constants.ParseMode.HTML
             )
 
-            # DM confirmation
+            # Admin confirmation
             if ADMIN_ID:
                 confirm = f"✅ Auto-posted {symbol} profit: ${profit:,} at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
                 await app.bot.send_message(chat_id=ADMIN_ID, text=confirm)
 
-            # 🎉 Hype message logic
+            # Hype messages
             if pos:
                 hype = None
                 if pos == 1:
                     hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
                 elif pos <= 3:
                     hype = f"🔥 {trader_name} broke into the Top 3 with ${profit:,}!"
-                elif pos <= 10 and random.random() < 0.25:  # only 25% chance for Top 10 entry
+                elif pos <= 10 and random.random() < 0.25:
                     hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
 
                 if hype:
@@ -828,28 +828,25 @@ else:
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
-    # Restrict to admin
     if user_id != str(ADMIN_ID):
         await update.message.reply_text("🚫 You are not authorized to trigger manual posts.")
         return
 
-    # Pick symbol
+    # 🎯 Weighted posting ratio: 50% stocks, 40% meme coins, 10% crypto
     r = random.random()
-if r < 0.5:
-    symbol = random.choice(STOCK_SYMBOLS)
-elif r < 0.9:
-    symbol = random.choice(MEME_COINS)
-else:
-    symbol = random.choice(CRYPTO_SYMBOLS)
+    if r < 0.5:
+        symbol = random.choice(STOCK_SYMBOLS)
+    elif r < 0.9:
+        symbol = random.choice(MEME_COINS)
+    else:
+        symbol = random.choice(CRYPTO_SYMBOLS)
 
     # Generate scenario
     deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
 
-    # Update leaderboard
     trader_id, trader_name = random.choice(RANKING_TRADERS)
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-    # Build message
     msg = (
         f"📈 <b>{symbol} Profit Update</b>\n"
         f"👤 Trader: {trader_name}\n"
@@ -860,10 +857,8 @@ else:
         f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
     )
 
-    # Generate card
     img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
-    # Send to group
     await context.bot.send_photo(
         chat_id=TELEGRAM_CHAT_ID,
         photo=img_buf,
@@ -873,16 +868,15 @@ else:
 
     await update.message.reply_text("✅ Manual profit update posted!")
 
-    # 🎉 Hype message logic
+    # Hype
     if pos:
         hype = None
         if pos == 1:
             hype = f"🚀 {trader_name} just TOOK the #1 spot with ${profit:,}! Legendary move!"
         elif pos <= 3:
             hype = f"🔥 {trader_name} broke into the Top 3 with ${profit:,}!"
-        elif pos <= 10 and random.random() < 0.25:  # 25% chance
+        elif pos <= 10 and random.random() < 0.25:
             hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
-
         if hype:
             await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
 # /start handler with Top 3 Rankings
