@@ -764,7 +764,13 @@ async def profit_posting_loop(app):
             await asyncio.sleep(wait_minutes * 60)
 
             # Pick symbol
-            symbol = random.choice(MEME_COINS) if random.random() < 0.6 else random.choice(STOCK_SYMBOLS + CRYPTO_SYMBOLS)
+            r = random.random()
+if r < 0.5:
+    symbol = random.choice(STOCK_SYMBOLS)
+elif r < 0.9:
+    symbol = random.choice(MEME_COINS)
+else:
+    symbol = random.choice(CRYPTO_SYMBOLS)
 
             # Generate profit scenario
             deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
@@ -828,7 +834,13 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     # Pick symbol
-    symbol = random.choice(MEME_COINS) if random.random() < 0.6 else random.choice(STOCK_SYMBOLS + CRYPTO_SYMBOLS)
+    r = random.random()
+if r < 0.5:
+    symbol = random.choice(STOCK_SYMBOLS)
+elif r < 0.9:
+    symbol = random.choice(MEME_COINS)
+else:
+    symbol = random.choice(CRYPTO_SYMBOLS)
 
     # Generate scenario
     deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
