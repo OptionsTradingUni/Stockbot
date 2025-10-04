@@ -30,6 +30,9 @@ import matplotlib.pyplot as plt
 from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from traders import RANKING_TRADERS
 
+# ✅ Track last posted category (so posts rotate properly)
+last_category = None
+
 # ---- Uniqueness tracking (cooldowns) ----
 used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
 used_profits: dict[int, float] = {}   # value -> last_used_timestamp
