@@ -756,30 +756,50 @@ def short_highlight(symbol: str, profit: float, roi: float) -> str:
 ADMIN_ID = os.getenv("ADMIN_ID")
 
 async def profit_posting_loop(app):
+    global last_category
     logger.info("Profit posting task started.")
     while True:
         try:
-            # Interval: 80% short (2–10 min), 20% long (20–30 min)
+            # Wait time between posts: 80% short (2–10 min), 20% long (20–30 min)
             wait_minutes = random.randint(2, 10) if random.random() < 0.8 else random.randint(20, 30)
             await asyncio.sleep(wait_minutes * 60)
 
-            # 🎯 Weighted posting ratio: 50% stocks, 40% meme coins, 10% crypto
+            # 🎯 Weighted category selection (50% stocks, 40% meme coins, 10% crypto)
             r = random.random()
             if r < 0.5:
-                symbol = random.choice(STOCK_SYMBOLS)
+                category = "stock"
             elif r < 0.9:
+                category = "meme"
+            else:
+                category = "crypto"
+
+            # Prevent repeating same category twice
+            if category == last_category:
+                if category == "stock":
+                    category = "meme" if random.random() < 0.7 else "crypto"
+                elif category == "meme":
+                    category = "stock" if random.random() < 0.7 else "crypto"
+                else:
+                    category = "stock"
+
+            last_category = category
+
+            # Pick symbol based on chosen category
+            if category == "stock":
+                symbol = random.choice(STOCK_SYMBOLS)
+            elif category == "meme":
                 symbol = random.choice(MEME_COINS)
             else:
                 symbol = random.choice(CRYPTO_SYMBOLS)
 
-            # Generate profit scenario
+            # Generate scenario
             deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
 
-            # Pick trader + update rankings
+            # Update rankings
             trader_id, trader_name = random.choice(RANKING_TRADERS)
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # Build message
+            # Build caption
             msg = (
                 f"📈 <b>{symbol} Profit Update</b>\n"
                 f"👤 Trader: {trader_name}\n"
@@ -790,10 +810,10 @@ async def profit_posting_loop(app):
                 f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
             )
 
-            # Generate image card
+            # Generate image
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
-            # Send to group
+            # Send to Telegram group
             await app.bot.send_photo(
                 chat_id=TELEGRAM_CHAT_ID,
                 photo=img_buf,
@@ -801,12 +821,12 @@ async def profit_posting_loop(app):
                 parse_mode=constants.ParseMode.HTML
             )
 
-            # Admin confirmation
+            # DM confirmation
             if ADMIN_ID:
-                confirm = f"✅ Auto-posted {symbol} profit: ${profit:,} at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
+                confirm = f"✅ Auto-posted {symbol} profit: ${profit:,} ({category}) at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
                 await app.bot.send_message(chat_id=ADMIN_ID, text=confirm)
 
-            # Hype messages
+            # 🎉 Optional hype message
             if pos:
                 hype = None
                 if pos == 1:
@@ -815,7 +835,6 @@ async def profit_posting_loop(app):
                     hype = f"🔥 {trader_name} broke into the Top 3 with ${profit:,}!"
                 elif pos <= 10 and random.random() < 0.25:
                     hype = f"💪 {trader_name} entered the Top 10 with ${profit:,}!"
-
                 if hype:
                     await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
 
@@ -826,24 +845,44 @@ async def profit_posting_loop(app):
             await asyncio.sleep(5)
 
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global last_category
     user_id = str(update.effective_user.id)
 
+    # Restrict to admin
     if user_id != str(ADMIN_ID):
         await update.message.reply_text("🚫 You are not authorized to trigger manual posts.")
         return
 
-    # 🎯 Weighted posting ratio: 50% stocks, 40% meme coins, 10% crypto
+    # 🎯 Weighted category selection (50% stocks, 40% meme coins, 10% crypto)
     r = random.random()
     if r < 0.5:
-        symbol = random.choice(STOCK_SYMBOLS)
+        category = "stock"
     elif r < 0.9:
+        category = "meme"
+    else:
+        category = "crypto"
+
+    # Prevent repeating same type twice
+    if category == last_category:
+        if category == "stock":
+            category = "meme" if random.random() < 0.7 else "crypto"
+        elif category == "meme":
+            category = "stock" if random.random() < 0.7 else "crypto"
+        else:
+            category = "stock"
+
+    last_category = category
+
+    # Pick symbol
+    if category == "stock":
+        symbol = random.choice(STOCK_SYMBOLS)
+    elif category == "meme":
         symbol = random.choice(MEME_COINS)
     else:
         symbol = random.choice(CRYPTO_SYMBOLS)
 
-    # Generate scenario
+    # Generate profit scenario
     deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-
     trader_id, trader_name = random.choice(RANKING_TRADERS)
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
@@ -866,9 +905,9 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode=constants.ParseMode.HTML
     )
 
-    await update.message.reply_text("✅ Manual profit update posted!")
+    await update.message.reply_text(f"✅ Manual profit update posted ({category}).")
 
-    # Hype
+    # Hype message
     if pos:
         hype = None
         if pos == 1:
