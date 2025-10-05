@@ -813,7 +813,7 @@ async def profit_posting_loop(app):
     f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
     "\n\n━━━━━━━━━━━━━━━\n"
     f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-    f"{get_random_verification(symbol)}\n"
+    f"{get_random_verification(symbol, engine)}\n"
     f"🌍 <b>Powered by Options Trading University</b>"
 )
 
@@ -903,7 +903,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
     "\n\n━━━━━━━━━━━━━━━\n"
     f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-    f"{get_random_verification(symbol)}\n"
+    f"{get_random_verification(symbol, engine)}\n"
     f"🌍 <b>Powered by Options Trading University</b>"
 )
 
