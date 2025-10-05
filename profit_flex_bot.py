@@ -813,7 +813,7 @@ async def profit_posting_loop(app):
             wait_minutes = random.randint(2, 10) if random.random() < 0.8 else random.randint(20, 30)
             await asyncio.sleep(wait_minutes * 60)
 
-            # 🎯 Weighted category selection (50% stocks, 40% meme coins, 10% crypto)
+            # 🎯 Weighted category selection
             r = random.random()
             if r < 0.5:
                 category = "stock"
@@ -822,18 +822,12 @@ async def profit_posting_loop(app):
             else:
                 category = "crypto"
 
-            # Prevent repeating same category twice
+            # Avoid repeating the same category twice
             if category == last_category:
-                if category == "stock":
-                    category = "meme" if random.random() < 0.7 else "crypto"
-                elif category == "meme":
-                    category = "stock" if random.random() < 0.7 else "crypto"
-                else:
-                    category = "stock"
-
+                category = random.choice(["stock", "meme", "crypto"])
             last_category = category
 
-            # Pick symbol based on chosen category
+            # Select symbol
             if category == "stock":
                 symbol = random.choice(STOCK_SYMBOLS)
             elif category == "meme":
@@ -841,46 +835,42 @@ async def profit_posting_loop(app):
             else:
                 symbol = random.choice(CRYPTO_SYMBOLS)
 
-            # Generate scenario
+            # Generate profit scenario
             deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
 
             # Update rankings
             trader_id, trader_name = random.choice(RANKING_TRADERS)
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # Build caption
+            # Build message
             msg = (
-    f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
-    f"👤 Trader: <b>{trader_name}</b>\n"
-    f"💰 Started With: <b>${deposit:,}</b>\n"
-    f"💥 Closed At: <b>${profit:,}</b> (+{roi}%)\n"
-    f"⚡ Strategy: <b>{trading_style}</b>\n"
-    f"🔥 {reason}\n\n"
-    f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
-    "\n\n━━━━━━━━━━━━━━━\n"
-    f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-    f"{get_random_verification(symbol, engine)}\n"
-    f"🌍 <b>Powered by Options Trading University</b>"
-)
+                f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
+                f"👤 Trader: <b>{trader_name}</b>\n"
+                f"💰 Started With: <b>${deposit:,}</b>\n"
+                f"💥 Closed At: <b>${profit:,}</b> (+{roi}%)\n"
+                f"⚡ Strategy: <b>{trading_style}</b>\n"
+                f"🔥 {reason}\n\n"
+                f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
+                "\n\n━━━━━━━━━━━━━━━\n"
+                f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
+                f"{get_random_verification(symbol, engine)}\n"
+                f"🌍 <b>Powered by Options Trading University</b>"
+            )
 
             # Generate image
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
-            # Send to Telegram group
-           sent_msg = await app.bot.send_photo(
-    chat_id=TELEGRAM_CHAT_ID,
-    photo=img_buf,
-    caption=msg,
-    parse_mode=constants.ParseMode.HTML
-)
+            # Send post to Telegram group
+            sent_msg = await app.bot.send_photo(
+                chat_id=TELEGRAM_CHAT_ID,
+                photo=img_buf,
+                caption=msg,
+                parse_mode=constants.ParseMode.HTML
+            )
 
-# 🌀 Simulate natural reactions right after posting
-await asyncio.sleep(random.uniform(2, 5))   # small delay before first reactions
-await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
-
-# 🌀 Simulate natural reactions right after posting
-await asyncio.sleep(random.uniform(2, 5))   # small delay before first reactions
-await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
+            # 🌀 Simulate natural reactions
+            await asyncio.sleep(random.uniform(2, 5))
+            await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
 
             # DM confirmation
             if ADMIN_ID:
@@ -909,12 +899,12 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     global last_category
     user_id = str(update.effective_user.id)
 
-    # Restrict to admin
+    # 🔐 Restrict to admin
     if user_id != str(ADMIN_ID):
         await update.message.reply_text("🚫 You are not authorized to trigger manual posts.")
         return
 
-    # 🎯 Weighted category selection (50% stocks, 40% meme coins, 10% crypto)
+    # 🎯 Weighted category selection
     r = random.random()
     if r < 0.5:
         category = "stock"
@@ -923,15 +913,9 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         category = "crypto"
 
-    # Prevent repeating same type twice
+    # Avoid repeating same type twice
     if category == last_category:
-        if category == "stock":
-            category = "meme" if random.random() < 0.7 else "crypto"
-        elif category == "meme":
-            category = "stock" if random.random() < 0.7 else "crypto"
-        else:
-            category = "stock"
-
+        category = random.choice(["stock", "meme", "crypto"])
     last_category = category
 
     # Pick symbol
@@ -947,36 +931,40 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     trader_id, trader_name = random.choice(RANKING_TRADERS)
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
+    # Build caption
     msg = (
-    f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
-    f"👤 Trader: <b>{trader_name}</b>\n"
-    f"💰 Started With: <b>${deposit:,}</b>\n"
-    f"💥 Closed At: <b>${profit:,}</b> (+{roi}%)\n"
-    f"⚡ Strategy: <b>{trading_style}</b>\n"
-    f"🔥 {reason}\n\n"
-    f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
-    "\n\n━━━━━━━━━━━━━━━\n"
-    f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-    f"{get_random_verification(symbol, engine)}\n"
-    f"🌍 <b>Powered by Options Trading University</b>"
-)
+        f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
+        f"👤 Trader: <b>{trader_name}</b>\n"
+        f"💰 Started With: <b>${deposit:,}</b>\n"
+        f"💥 Closed At: <b>${profit:,}</b> (+{roi}%)\n"
+        f"⚡ Strategy: <b>{trading_style}</b>\n"
+        f"🔥 {reason}\n\n"
+        f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
+        "\n\n━━━━━━━━━━━━━━━\n"
+        f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
+        f"{get_random_verification(symbol, engine)}\n"
+        f"🌍 <b>Powered by Options Trading University</b>"
+    )
 
+    # Generate image
     img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
+    # Send photo + caption
     sent_msg = await app.bot.send_photo(
-    chat_id=TELEGRAM_CHAT_ID,
-    photo=img_buf,
-    caption=msg,
-    parse_mode=constants.ParseMode.HTML
-)
+        chat_id=TELEGRAM_CHAT_ID,
+        photo=img_buf,
+        caption=msg,
+        parse_mode=constants.ParseMode.HTML
+    )
 
-# 🌀 Simulate natural reactions right after posting
-await asyncio.sleep(random.uniform(2, 5))   # small delay before first reactions
-await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
+    # 🌀 Simulate natural reactions
+    await asyncio.sleep(random.uniform(2, 5))
+    await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
 
+    # Confirm to admin
     await update.message.reply_text(f"✅ Manual profit update posted ({category}).")
 
-    # Hype message
+    # 🎉 Optional hype message
     if pos:
         hype = None
         if pos == 1:
