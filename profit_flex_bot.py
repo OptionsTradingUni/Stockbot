@@ -1355,7 +1355,8 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("resetdb", resetdb_handler))
     app.add_handler(CommandHandler("postprofit", manual_post_handler))
-
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
+    
     # Hook startup event
     app.post_init = on_startup
 
