@@ -29,10 +29,12 @@ matplotlib.use("Agg")  # headless backend for servers
 import matplotlib.pyplot as plt
 from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from traders import RANKING_TRADERS
+from verification_texts import random_verification_line
 
 # ✅ Track last posted category (so posts rotate properly)
 last_category = None
-
+#verification
+verify_line = random_verification_line()
 # ---- Uniqueness tracking (cooldowns) ----
 used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
 used_profits: dict[int, float] = {}   # value -> last_used_timestamp
@@ -804,14 +806,18 @@ async def profit_posting_loop(app):
 
             # Build caption
             msg = (
-                f"📈 <b>{symbol} Profit Update</b>\n"
-                f"👤 Trader: {trader_name}\n"
-                f"💰 Invested: ${deposit:,}\n"
-                f"🎯 Profit: ${profit:,} (+{roi}%)\n"
-                f"📊 Strategy: {trading_style}\n"
-                f"🔥 {reason}\n\n"
-                f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
-            )
+    f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
+    f"👤 Trader: <b>{trader_name}</b>\n"
+    f"💰 Started With: <b>${deposit:,}</b>\n"
+    f"💥 Closed At: <b>${profit:,}</b> (+{roi}%)\n"
+    f"⚡ Strategy: <b>{trading_style}</b>\n"
+    f"🔥 {reason}\n\n"
+    f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
+    "\n\n━━━━━━━━━━━━━━━\n"
+    f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
+    f"{verify_line}\n"
+    f"🌍 <b>Powered by Options Trading University</b>"
+)
 
             # Generate image
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
@@ -890,14 +896,18 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
     msg = (
-        f"📈 <b>{symbol} Profit Update</b>\n"
-        f"👤 Trader: {trader_name}\n"
-        f"💰 Invested: ${deposit:,}\n"
-        f"🎯 Profit: ${profit:,} (+{roi}%)\n"
-        f"📊 Strategy: {trading_style}\n"
-        f"🔥 {reason}\n\n"
-        f"🏆 Top 10 Traders:\n" + "\n".join(rankings)
-    )
+    f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
+    f"👤 Trader: <b>{trader_name}</b>\n"
+    f"💰 Started With: <b>${deposit:,}</b>\n"
+    f"💥 Closed At: <b>${profit:,}</b> (+{roi}%)\n"
+    f"⚡ Strategy: <b>{trading_style}</b>\n"
+    f"🔥 {reason}\n\n"
+    f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
+    "\n\n━━━━━━━━━━━━━━━\n"
+    f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
+    f"{verify_line}\n"
+    f"🌍 <b>Powered by Options Trading University</b>"
+)
 
     img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
