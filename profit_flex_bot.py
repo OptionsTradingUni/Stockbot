@@ -33,7 +33,7 @@ from verification_texts import random_verification_line
 
 # ✅ Track last posted category (so posts rotate properly)
 last_category = None
-#verification
+#verification #
 verify_line = random_verification_line()
 # ---- Uniqueness tracking (cooldowns) ----
 used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
