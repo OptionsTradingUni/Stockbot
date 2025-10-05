@@ -31,13 +31,9 @@ from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from traders import RANKING_TRADERS
 from verification_texts import get_random_verification
 from telegram.error import TelegramError
-from telegram import ReactionTypeEmoji  # ✅ c
 # ✅ Track last posted category (so posts rotate properly)
 last_category = None
 # ===============================
-# AUTO REACTION SIMULATOR
-# ===============================
-REACTIONS = ["🔥", "💸", "🚀", "📈", "💪", "⚡️", "💥", "🌕"]
 # ---- Uniqueness tracking (cooldowns) ----
 used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
 used_profits: dict[int, float] = {}   # value -> last_used_timestamp
@@ -518,52 +514,6 @@ def generate_profit_scenario(symbol):
 
     return deposit, profit, percentage_gain, random.choice(reasons), trading_style
 
-# reaction automation 
-async def auto_react_to_message(app, chat_id: int, message_id: int, category: str):
-    """
-    Simulate natural Telegram reactions under each Profit Flex post.
-    Adds 30–90 reactions with realistic ramp-up timing depending on category.
-    Compatible with python-telegram-bot v21+ (uses ReactionTypeEmoji).
-    """
-
-    try:
-        # Weighted number of reactions by category
-        if category == "meme":
-            num_reacts = random.randint(50, 90)
-        elif category == "crypto":
-            num_reacts = random.randint(40, 70)
-        else:
-            num_reacts = random.randint(30, 50)
-
-        for i in range(num_reacts):
-            emoji = random.choice(REACTIONS)
-
-            # Natural timing curve (start slow → speed up → slow down)
-            if i < num_reacts * 0.2:            # warm-up
-                delay = random.uniform(0.15, 0.3)
-            elif i < num_reacts * 0.8:          # burst period
-                delay = random.uniform(0.02, 0.08)
-            else:                               # cool-down
-                delay = random.uniform(0.08, 0.15)
-
-            await asyncio.sleep(delay)
-
-            try:
-                # ✅ Works in PTB v21+
-                await app.bot.set_message_reaction(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    reaction=[ReactionTypeEmoji(emoji)]
-                )
-            except TelegramError as e:
-                # Ignore silent failures or rate-limit issues
-                if "reaction" not in str(e).lower():
-                    logging.warning(f"Reaction skipped: {e}")
-
-        logging.info(f"✅ Auto-reacted with {num_reacts} emojis on message {message_id} ({category})")
-
-    except Exception as e:
-        logging.error(f"⚠️ Auto-reaction error: {e}")
 # ---------------------------
 # Leaderboard Helpers
 # ---------------------------
@@ -809,12 +759,16 @@ def short_highlight(symbol: str, profit: float, roi: float) -> str:
 
 ADMIN_ID = os.getenv("ADMIN_ID")
 
+# ===============================
+# AUTO PROFIT POSTING LOOP
+# ===============================
 async def profit_posting_loop(app):
     global last_category
     logger.info("Profit posting task started.")
+
     while True:
         try:
-            # Wait time between posts: 80% short (2–10 min), 20% long (20–30 min)
+            # Wait time between posts
             wait_minutes = random.randint(2, 10) if random.random() < 0.8 else random.randint(20, 30)
             await asyncio.sleep(wait_minutes * 60)
 
@@ -827,12 +781,12 @@ async def profit_posting_loop(app):
             else:
                 category = "crypto"
 
-            # Avoid repeating the same category twice
+            # Prevent repetition of same category twice
             if category == last_category:
                 category = random.choice(["stock", "meme", "crypto"])
             last_category = category
 
-            # Select symbol
+            # Pick a symbol
             if category == "stock":
                 symbol = random.choice(STOCK_SYMBOLS)
             elif category == "meme":
@@ -840,14 +794,17 @@ async def profit_posting_loop(app):
             else:
                 symbol = random.choice(CRYPTO_SYMBOLS)
 
-            # Generate profit scenario
+            # Generate realistic profit scenario
             deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-
-            # Update rankings
             trader_id, trader_name = random.choice(RANKING_TRADERS)
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # Build message
+            # 🧠 Simulated engagement
+            fake_comments = random.randint(18, 45)
+            fake_reacts = random.randint(60, 140)
+            engagement_line = f"💬 {fake_comments} Comments   🔥 {fake_reacts} Reactions"
+
+            # 📄 Build caption
             msg = (
                 f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
                 f"👤 Trader: <b>{trader_name}</b>\n"
@@ -858,14 +815,15 @@ async def profit_posting_loop(app):
                 f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
                 "\n\n━━━━━━━━━━━━━━━\n"
                 f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-                f"{get_random_verification(symbol, engine)}\n"
-                f"🌍 <b>Powered by Options Trading University</b>"
+                f"{get_random_verification(symbol)}\n"
+                f"🌍 <b>Powered by Options Trading University</b>\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"{engagement_line}"
             )
 
-            # Generate image
+            # 🖼️ Generate profit card
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
-            # Send post to Telegram group
             sent_msg = await app.bot.send_photo(
                 chat_id=TELEGRAM_CHAT_ID,
                 photo=img_buf,
@@ -873,13 +831,9 @@ async def profit_posting_loop(app):
                 parse_mode=constants.ParseMode.HTML
             )
 
-            # 🌀 Simulate natural reactions
-            await asyncio.sleep(random.uniform(2, 5))
-            await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
-
-            # DM confirmation
+            # 📨 Notify admin quietly
             if ADMIN_ID:
-                confirm = f"✅ Auto-posted {symbol} profit: ${profit:,} ({category}) at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
+                confirm = f"✅ Auto-posted {symbol}: ${profit:,} ({category}) at {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
                 await app.bot.send_message(chat_id=ADMIN_ID, text=confirm)
 
             # 🎉 Optional hype message
@@ -898,18 +852,22 @@ async def profit_posting_loop(app):
             logger.error(f"Error in posting loop: {e}")
             if ADMIN_ID:
                 await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
 
+
+# ===============================
+# MANUAL POST COMMAND
+# ===============================
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global last_category
     user_id = str(update.effective_user.id)
 
-    # 🔐 Restrict to admin
+    # Restrict to admin
     if user_id != str(ADMIN_ID):
         await update.message.reply_text("🚫 You are not authorized to trigger manual posts.")
         return
 
-    # 🎯 Weighted category selection
+    # 🎯 Category selection (weighted)
     r = random.random()
     if r < 0.5:
         category = "stock"
@@ -918,12 +876,12 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         category = "crypto"
 
-    # Avoid repeating same type twice
+    # Prevent repetition of same category twice
     if category == last_category:
         category = random.choice(["stock", "meme", "crypto"])
     last_category = category
 
-    # Pick symbol
+    # Pick a symbol
     if category == "stock":
         symbol = random.choice(STOCK_SYMBOLS)
     elif category == "meme":
@@ -936,7 +894,12 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     trader_id, trader_name = random.choice(RANKING_TRADERS)
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-    # Build caption
+    # 🧠 Simulated engagement
+    fake_comments = random.randint(12, 40)
+    fake_reacts = random.randint(50, 110)
+    engagement_line = f"💬 {fake_comments} Comments   🔥 {fake_reacts} Reactions"
+
+    # 📄 Build caption
     msg = (
         f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
         f"👤 Trader: <b>{trader_name}</b>\n"
@@ -947,29 +910,25 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
         "\n\n━━━━━━━━━━━━━━━\n"
         f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-        f"{get_random_verification(symbol, engine)}\n"
-        f"🌍 <b>Powered by Options Trading University</b>"
+        f"{get_random_verification(symbol)}\n"
+        f"🌍 <b>Powered by Options Trading University</b>\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"{engagement_line}"
     )
 
-    # Generate image
+    # 🖼️ Image generation
     img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
-    # Send photo + caption
-    sent_msg = await app.bot.send_photo(
+    sent_msg = await context.bot.send_photo(
         chat_id=TELEGRAM_CHAT_ID,
         photo=img_buf,
         caption=msg,
         parse_mode=constants.ParseMode.HTML
     )
 
-    # 🌀 Simulate natural reactions
-    await asyncio.sleep(random.uniform(2, 5))
-    await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
-
-    # Confirm to admin
     await update.message.reply_text(f"✅ Manual profit update posted ({category}).")
 
-    # 🎉 Optional hype message
+    # 🎉 Optional hype
     if pos:
         hype = None
         if pos == 1:
