@@ -5010,30 +5010,3 @@ MEME_VERIFICATIONS = [
     "🔍 <i>Bonding curve buy attested through Solana explorer via signed wallet proof (DEX) ({txid})</i>",
     "🔍 <i>Token burn event validated through Solscan explorer via RPC archive (ROUTE) ({txid})</i>",
 ]
-
-import random
-
-def get_random_verification(symbol: str, stock_tags=None, crypto_tags=None, meme_tags=None) -> str:
-    """Return a random verification line with ({txid}) placeholder.
-    Picked by symbol membership using provided tag sets; defaults included if None.
-    """
-    symbol = (symbol or "").upper()
-    default_stock = {"AAPL","MSFT","NVDA","TSLA","AMZN","META","GOOGL","SPY","QQQ"}
-    default_crypto = {"BTC","ETH","SOL","BNB","XRP","ADA","DOGE","SHIB"}
-    default_meme   = {"NIKY","PEPE","BONK","WIF","SAMO","POPCAT"}
-
-    stock_tags = set(stock_tags or default_stock)
-    crypto_tags = set(crypto_tags or default_crypto)
-    meme_tags   = set(meme_tags   or default_meme)
-
-    if symbol in stock_tags:
-        pool = STOCK_VERIFICATIONS
-    elif symbol in crypto_tags:
-        pool = CRYPTO_VERIFICATIONS
-    elif symbol in meme_tags:
-        pool = MEME_VERIFICATIONS
-    else:
-        # fallback: lightly favor stock to be safe
-        pool = STOCK_VERIFICATIONS + CRYPTO_VERIFICATIONS + MEME_VERIFICATIONS
-
-    return random.choice(pool)
