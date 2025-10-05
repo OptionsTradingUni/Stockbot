@@ -29,12 +29,10 @@ matplotlib.use("Agg")  # headless backend for servers
 import matplotlib.pyplot as plt
 from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from traders import RANKING_TRADERS
-from verification_texts import random_verification_line
+from verification_texts import get_random_verification
 
 # ✅ Track last posted category (so posts rotate properly)
 last_category = None
-#verification #
-verify_line = random_verification_line()
 # ---- Uniqueness tracking (cooldowns) ----
 used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
 used_profits: dict[int, float] = {}   # value -> last_used_timestamp
@@ -815,7 +813,7 @@ async def profit_posting_loop(app):
     f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
     "\n\n━━━━━━━━━━━━━━━\n"
     f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-    f"{verify_line}\n"
+    f"{get_random_verification(symbol)}\n"
     f"🌍 <b>Powered by Options Trading University</b>"
 )
 
@@ -905,7 +903,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
     "\n\n━━━━━━━━━━━━━━━\n"
     f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-    f"{verify_line}\n"
+    f"{get_random_verification(symbol)}\n"
     f"🌍 <b>Powered by Options Trading University</b>"
 )
 
