@@ -31,6 +31,13 @@ from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from traders import RANKING_TRADERS
 from verification_texts import get_random_verification
 from telegram.error import TelegramError
+from telegram.ext import MessageHandler, filters
+from telegram.constants import ChatMemberStatus
+
+
+
+
+
 # ✅ Track last posted category (so posts rotate properly)
 last_category = None
 # ===============================
@@ -514,6 +521,40 @@ def generate_profit_scenario(symbol):
 
     return deposit, profit, percentage_gain, random.choice(reasons), trading_style
 
+# ================================
+# NEW MEMBER WELCOME HANDLER
+# ================================
+async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send a personalized welcome message to new members, then delete after a delay."""
+    try:
+        for member in update.message.new_chat_members:
+            name = member.first_name or member.username or "Trader"
+
+            # 👋 Welcome message
+            welcome_text = (
+                f"👋 Welcome <b>{name}</b>!\n\n"
+                f"You’ve joined <b>Profit Flex Group</b> , where verified profit drops from "
+                f"<b>Options Trading University</b> are posted live. 💸\n\n"
+                f"👉 Stay tuned for real-time profit updates, leaderboard movements, "
+                f"and inspiration from top traders worldwide.\n\n"
+                f"<i>(This message will disappear automatically to keep the chat clean.)</i>"
+            )
+
+            sent_msg = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=welcome_text,
+                parse_mode=constants.ParseMode.HTML
+            )
+
+            # ⏳ Auto delete after 20 seconds (adjustable)
+            await asyncio.sleep(20)
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=sent_msg.message_id)
+            except Exception:
+                pass  # Ignore if message already deleted or permissions missing
+
+    except Exception as e:
+        logger.error(f"⚠️ Welcome message error: {e}")
 # ---------------------------
 # Leaderboard Helpers
 # ---------------------------
