@@ -799,11 +799,6 @@ async def profit_posting_loop(app):
             trader_id, trader_name = random.choice(RANKING_TRADERS)
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
 
-            # 🧠 Simulated engagement
-            fake_comments = random.randint(18, 45)
-            fake_reacts = random.randint(60, 140)
-            engagement_line = f"💬 {fake_comments} Comments   🔥 {fake_reacts} Reactions"
-
             # 📄 Build caption
             msg = (
                 f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
@@ -817,8 +812,6 @@ async def profit_posting_loop(app):
                 f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
                 f"{get_random_verification(symbol)}\n"
                 f"🌍 <b>Powered by Options Trading University</b>\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"{engagement_line}"
             )
 
             # 🖼️ Generate profit card
@@ -893,12 +886,6 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
     trader_id, trader_name = random.choice(RANKING_TRADERS)
     rankings, pos = update_rankings_with_new_profit(trader_name, profit)
-
-    # 🧠 Simulated engagement
-    fake_comments = random.randint(12, 40)
-    fake_reacts = random.randint(50, 110)
-    engagement_line = f"💬 {fake_comments} Comments   🔥 {fake_reacts} Reactions"
-
     # 📄 Build caption
     msg = (
         f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
@@ -912,8 +899,6 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
         f"{get_random_verification(symbol)}\n"
         f"🌍 <b>Powered by Options Trading University</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"{engagement_line}"
     )
 
     # 🖼️ Image generation
