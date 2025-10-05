@@ -33,6 +33,12 @@ from verification_texts import get_random_verification
 
 # ✅ Track last posted category (so posts rotate properly)
 last_category = None
+# ===============================
+# AUTO REACTION SIMULATOR
+# ===============================
+from telegram import InputMessageReaction
+
+REACTIONS = ["🔥", "💸", "🚀", "📈", "💪", "⚡️", "💥", "🌕"]
 # ---- Uniqueness tracking (cooldowns) ----
 used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
 used_profits: dict[int, float] = {}   # value -> last_used_timestamp
@@ -437,6 +443,46 @@ def generate_profit_scenario(symbol):
         reason = f"{symbol} {trading_style} run delivered massive gains!"
 
     return deposit, profit, roi, reason, trading_style
+
+    async def auto_react_to_message(app, chat_id: int, message_id: int, category: str):
+    """
+    Simulate natural Telegram reactions under each Profit Flex post.
+    Adds 30–90 reactions with realistic ramp-up timing depending on category.
+    """
+    try:
+        # Weighted reaction count by category
+        if category == "meme":
+            num_reacts = random.randint(50, 90)
+        elif category == "crypto":
+            num_reacts = random.randint(40, 70)
+        else:
+            num_reacts = random.randint(30, 50)
+
+        for i in range(num_reacts):
+            emoji = random.choice(REACTIONS)
+
+            # Ramp-up curve: start slow, speed up mid, slow down end
+            if i < num_reacts * 0.2:            # warm-up
+                delay = random.uniform(0.15, 0.3)
+            elif i < num_reacts * 0.8:          # burst period
+                delay = random.uniform(0.02, 0.08)
+            else:                               # cool-down
+                delay = random.uniform(0.08, 0.15)
+
+            await asyncio.sleep(delay)
+
+            try:
+                await app.bot.set_message_reaction(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reaction=[InputMessageReaction(emoji)]
+                )
+            except Exception:
+                # Telegram may silently ignore duplicate reactions
+                pass
+
+    except Exception as e:
+        logger.error(f"⚠️ Auto-reaction error: {e}")
     
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
@@ -821,12 +867,20 @@ async def profit_posting_loop(app):
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
             # Send to Telegram group
-            await app.bot.send_photo(
-                chat_id=TELEGRAM_CHAT_ID,
-                photo=img_buf,
-                caption=msg,
-                parse_mode=constants.ParseMode.HTML
-            )
+           sent_msg = await app.bot.send_photo(
+    chat_id=TELEGRAM_CHAT_ID,
+    photo=img_buf,
+    caption=msg,
+    parse_mode=constants.ParseMode.HTML
+)
+
+# 🌀 Simulate natural reactions right after posting
+await asyncio.sleep(random.uniform(2, 5))   # small delay before first reactions
+await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
+
+# 🌀 Simulate natural reactions right after posting
+await asyncio.sleep(random.uniform(2, 5))   # small delay before first reactions
+await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
 
             # DM confirmation
             if ADMIN_ID:
@@ -909,12 +963,16 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
 
-    await context.bot.send_photo(
-        chat_id=TELEGRAM_CHAT_ID,
-        photo=img_buf,
-        caption=msg,
-        parse_mode=constants.ParseMode.HTML
-    )
+    sent_msg = await app.bot.send_photo(
+    chat_id=TELEGRAM_CHAT_ID,
+    photo=img_buf,
+    caption=msg,
+    parse_mode=constants.ParseMode.HTML
+)
+
+# 🌀 Simulate natural reactions right after posting
+await asyncio.sleep(random.uniform(2, 5))   # small delay before first reactions
+await auto_react_to_message(app, TELEGRAM_CHAT_ID, sent_msg.message_id, category)
 
     await update.message.reply_text(f"✅ Manual profit update posted ({category}).")
 
