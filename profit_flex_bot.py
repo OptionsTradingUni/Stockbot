@@ -444,46 +444,6 @@ def generate_profit_scenario(symbol):
 
     return deposit, profit, roi, reason, trading_style
 
-    async def auto_react_to_message(app, chat_id: int, message_id: int, category: str):
-    """
-    Simulate natural Telegram reactions under each Profit Flex post.
-    Adds 30–90 reactions with realistic ramp-up timing depending on category.
-    """
-    try:
-        # Weighted reaction count by category
-        if category == "meme":
-            num_reacts = random.randint(50, 90)
-        elif category == "crypto":
-            num_reacts = random.randint(40, 70)
-        else:
-            num_reacts = random.randint(30, 50)
-
-        for i in range(num_reacts):
-            emoji = random.choice(REACTIONS)
-
-            # Ramp-up curve: start slow, speed up mid, slow down end
-            if i < num_reacts * 0.2:            # warm-up
-                delay = random.uniform(0.15, 0.3)
-            elif i < num_reacts * 0.8:          # burst period
-                delay = random.uniform(0.02, 0.08)
-            else:                               # cool-down
-                delay = random.uniform(0.08, 0.15)
-
-            await asyncio.sleep(delay)
-
-            try:
-                await app.bot.set_message_reaction(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    reaction=[InputMessageReaction(emoji)]
-                )
-            except Exception:
-                # Telegram may silently ignore duplicate reactions
-                pass
-
-    except Exception as e:
-        logger.error(f"⚠️ Auto-reaction error: {e}")
-    
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
         if is_meme:
@@ -559,6 +519,46 @@ def generate_profit_scenario(symbol):
 
     return deposit, profit, percentage_gain, random.choice(reasons), trading_style
 
+# reaction automation 
+async def auto_react_to_message(app, chat_id: int, message_id: int, category: str):
+    """
+    Simulate natural Telegram reactions under each Profit Flex post.
+    Adds 30–90 reactions with realistic ramp-up timing depending on category.
+    """
+    try:
+        # Weighted reaction count by category
+        if category == "meme":
+            num_reacts = random.randint(50, 90)
+        elif category == "crypto":
+            num_reacts = random.randint(40, 70)
+        else:
+            num_reacts = random.randint(30, 50)
+
+        for i in range(num_reacts):
+            emoji = random.choice(REACTIONS)
+
+            # Ramp-up curve: start slow, speed up mid, slow down end
+            if i < num_reacts * 0.2:            # warm-up
+                delay = random.uniform(0.15, 0.3)
+            elif i < num_reacts * 0.8:          # burst period
+                delay = random.uniform(0.02, 0.08)
+            else:                               # cool-down
+                delay = random.uniform(0.08, 0.15)
+
+            await asyncio.sleep(delay)
+
+            try:
+                await app.bot.set_message_reaction(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reaction=[InputMessageReaction(emoji)]
+                )
+            except Exception:
+                # Telegram may silently ignore duplicate reactions or timing issues
+                pass
+
+    except Exception as e:
+        logger.error(f"⚠️ Auto-reaction error: {e}")
 # ---------------------------
 # Leaderboard Helpers
 # ---------------------------
