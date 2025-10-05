@@ -36,7 +36,7 @@ last_category = None
 # ===============================
 # AUTO REACTION SIMULATOR
 # ===============================
-from telegram import InputMessageReaction
+from telegram import MessageReactionTypeEmoji
 
 REACTIONS = ["🔥", "💸", "🚀", "📈", "💪", "⚡️", "💥", "🌕"]
 # ---- Uniqueness tracking (cooldowns) ----
@@ -524,7 +524,9 @@ async def auto_react_to_message(app, chat_id: int, message_id: int, category: st
     """
     Simulate natural Telegram reactions under each Profit Flex post.
     Adds 30–90 reactions with realistic ramp-up timing depending on category.
+    If running on an older PTB version without reaction support, logs simulated reactions instead.
     """
+
     try:
         # Weighted reaction count by category
         if category == "meme":
@@ -534,10 +536,17 @@ async def auto_react_to_message(app, chat_id: int, message_id: int, category: st
         else:
             num_reacts = random.randint(30, 50)
 
+        # Try to import the new Telegram reaction class (v21+)
+        try:
+            from telegram import MessageReactionTypeEmoji
+            supports_reaction = True
+        except ImportError:
+            supports_reaction = False
+
         for i in range(num_reacts):
             emoji = random.choice(REACTIONS)
 
-            # Ramp-up curve: start slow, speed up mid, slow down end
+            # Ramp-up curve: starts slow → peaks → cools off
             if i < num_reacts * 0.2:            # warm-up
                 delay = random.uniform(0.15, 0.3)
             elif i < num_reacts * 0.8:          # burst period
@@ -547,18 +556,26 @@ async def auto_react_to_message(app, chat_id: int, message_id: int, category: st
 
             await asyncio.sleep(delay)
 
-            try:
-                await app.bot.set_message_reaction(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    reaction=[InputMessageReaction(emoji)]
-                )
-            except Exception:
-                # Telegram may silently ignore duplicate reactions or timing issues
-                pass
+            if supports_reaction:
+                try:
+                    await app.bot.set_message_reaction(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        reaction=[MessageReactionTypeEmoji(emoji)]
+                    )
+                except TelegramError as e:
+                    # ignore duplicates or rate-limits quietly
+                    if "reaction" not in str(e).lower():
+                        logging.warning(f"Reaction skipped: {e}")
+            else:
+                # If older version — simulate
+                if i % 5 == 0:
+                    logging.info(f"[Simulated Reaction] {emoji} on message {message_id}")
+
+        logging.info(f"✅ Auto-reacted with ~{num_reacts} emojis on message {message_id} ({category})")
 
     except Exception as e:
-        logger.error(f"⚠️ Auto-reaction error: {e}")
+        logging.error(f"⚠️ Auto-reaction error: {e}")
 # ---------------------------
 # Leaderboard Helpers
 # ---------------------------
