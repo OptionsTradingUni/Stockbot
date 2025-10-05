@@ -5021,3 +5021,6 @@ def random_verification_line(symbol: str = '', stock_symbols=None, crypto_symbol
     elif s in stock_symbols: pool = STOCK_VERIFICATIONS
     else: pool = STOCK_VERIFICATIONS + CRYPTO_VERIFICATIONS + MEME_VERIFICATIONS
     return random.choice(pool)
+
+# compatibility alias
+get_random_verification = random_verification_line
