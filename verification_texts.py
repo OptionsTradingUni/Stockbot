@@ -3,7 +3,7 @@ import random
 import uuid
 from datetime import datetime
 from sqlalchemy import select, insert, update
-from main import engine  # Assuming main has the engine
+from profit_flex_bot import engine  # Assuming main has the engine
 from stock_verification import STOCK_VERIFICATIONS, CRYPTO_VERIFICATIONS, MEME_VERIFICATIONS
 # Table for tracking used TXIDs
 from sqlalchemy import Table, Column, String, DateTime, MetaData
@@ -17,21 +17,6 @@ txids = Table(
 # Create table if not exists
 metadata.create_all(engine)
 
-# Pre-generated pools
-STOCK_VERIFICATIONS = [
-    "\ud83d\udcca <i>Trade brokerage confirmation confirmed through TD Ameritrade via secure feed ({txid})</i>",
-    # ... (1,666 additional unique stock lines, generated from templates as shown in the tool call)
-]
-
-CRYPTO_VERIFICATIONS = [
-    "\ud83d\udd0d <i>Dex trade verified by on Polygon Explorer via explorer ({txid})</i>",
-    # ... (1,666 additional unique crypto lines, generated from templates)
-]
-
-MEME_VERIFICATIONS = [
-    "\ud83d\udd0d <i>Swap event confirmed through on Jupiter DEX via secure feed ({txid})</i>",
-    # ... (1,665 additional unique meme lines, generated from templates)
-]
 
 def generate_unique_txid():
     """Generate a unique 8-character uppercase hex TXID and store it in the database."""
