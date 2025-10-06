@@ -58,18 +58,21 @@ trade_logs = Table(
     Column("timestamp", DateTime, default=datetime.utcnow),
     Column("symbol", String),
     Column("trader_name", String),
-    Column("broker_name", String),
+    Column("broker_name", String, default="Fidelity"),
     Column("direction", String, default="Buy/Sell"),
     Column("status", String, default="Filled"),
-    Column("quantity", Float),
+    Column("quantity", Float, default=1.0),
     Column("deposit", Float),
     Column("profit", Float),
-    Column("entry_price", Float),
-    Column("exit_price", Float),
-    Column("total_value_exit", Float),
-    Column("commission", Float),
-    Column("slippage", Float)
+    Column("roi", Float),  # Added
+    Column("strategy", String),  # Added
+    Column("reason", String),  # Added
+    Column("posted_at", DateTime, default=datetime.utcnow),  # Added
+    Column("entry_price", Float, nullable=True),
+    Column("exit_price", Float, nullable=True),
+    Column("total_value_exit", Float, nullable=True),
+    Column("commission", Float, nullable=True),
+    Column("slippage", Float, nullable=True)
 )
-
 # This command creates the tables if they don't exist
 metadata.create_all(engine)
