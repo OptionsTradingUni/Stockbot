@@ -1124,6 +1124,7 @@ async def profit_posting_loop(app):
                         deposit = random.randint(500, 5000)
                         roi = pct_change_24h
                         profit = deposit * (roi / 100.0)
+                        direction = "BUY" if roi >= 0 else "SELL"   # ✅ ADD THIS LINE
                         reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                         trading_style = "Market Analysis"
                         post_title = f"📈 <b>{symbol} Live Market Report</b>"
@@ -1249,6 +1250,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     deposit = random.randint(500, 5000)
                     roi = pct_change_24h
                     profit = deposit * (roi / 100.0)
+                    direction = "BUY" if roi >= 0 else "SELL"   # ✅ ADD THIS LINE
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                     trading_style = "Market Analysis"
                     post_title = f"📈 <b>{symbol} Live Market Report</b>"
