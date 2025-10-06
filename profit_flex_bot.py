@@ -1222,9 +1222,7 @@ async def profit_posting_loop(app):
                         exit_price=exit_price,
                         direction=direction,
                         reason=reason,
-                        posted_at=timestamp,
-                        post_title=post_title,
-                        trading_style=trading_style,
+                        posted_at=timestamp
                     )
                 )
 
@@ -1325,9 +1323,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     exit_price=exit_price,
                     direction=direction,
                     reason=reason,
-                    posted_at=timestamp,
-                    post_title=post_title,
-                    trading_style=trading_style,
+                    posted_at=timestamp
                 )
             )
 
