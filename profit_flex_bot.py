@@ -515,12 +515,12 @@ def generate_profit_scenario(symbol):
     # --- Step 1: Define parameters for different asset types ---
     if symbol in MEME_COINS:
         # For memes: Higher average returns, wider spread of possibilities
-        deposit = random.randint(100, 1500)
+        deposit = random.randint(100, 9700)
         avg_multiplier = 3.5  # Avg 250% ROI
         spread = 1.5
     else:  # Stocks & Regular Crypto
         # For stocks/crypto: More conservative returns, tighter spread
-        deposit = random.randint(500, 7500)
+        deposit = random.randint(500, 16500)
         avg_multiplier = 1.5  # Avg 50% ROI
         spread = 0.4
 
