@@ -89,25 +89,45 @@ def save_trade_log(
     txid, symbol, trader_name, deposit, profit, roi, strategy, reason,
     entry_price=None, exit_price=None, quantity=None, commission=None, slippage=None
 ):
-    """Save each posted trade to the database with realistic execution metrics."""
+    """Save each posted trade to the database with realistic execution metrics and correct broker mapping."""
     try:
-        # --- realistic random execution data ---
+        symbol_upper = symbol.upper()
+
+        # --- Smart Broker Mapping (realistic by asset type) ---
+        if symbol_upper in STOCK_SYMBOLS:
+            broker_name = random.choice([
+                "Robinhood", "Webull", "E*TRADE", "Charles Schwab", "Fidelity"
+            ])
+        elif symbol_upper in CRYPTO_SYMBOLS:
+            broker_name = random.choice([
+                "Binance", "Coinbase", "Kraken", "Bybit", "OKX", "Bitget"
+            ])
+        elif symbol_upper in MEME_COINS:
+            broker_name = random.choice([
+                "Uniswap", "Raydium", "PancakeSwap", "Jupiter", "DEXTools"
+            ])
+        else:
+            broker_name = "Verified Exchange"
+
+        # --- Generate or reuse values if not provided ---
         entry_price = entry_price or round(random.uniform(10, 350), 4)
         exit_price = exit_price or round(entry_price * (1 + roi / 100), 4)
         quantity = quantity or round(deposit / entry_price, 6)
         total_value_exit = round(quantity * exit_price, 2)
         commission = commission or round(deposit * 0.001, 2)          # 0.1% fee
         slippage = slippage or round(random.uniform(0.01, 0.15), 4)   # 0.01–0.15%
+        direction = "BUY" if profit >= 0 else "SELL"
 
+        # --- Insert into DB ---
         with engine.begin() as conn:
             conn.execute(
                 trade_logs.insert().values(
                     txid=txid,
-                    symbol=symbol,
+                    symbol=symbol_upper,
                     trader_name=trader_name,
-                    deposit=deposit,
-                    profit=profit,
-                    roi=roi,
+                    deposit=round(deposit, 2),
+                    profit=round(profit, 2),
+                    roi=round(roi, 2),
                     strategy=strategy,
                     reason=reason,
                     entry_price=entry_price,
@@ -116,17 +136,16 @@ def save_trade_log(
                     total_value_exit=total_value_exit,
                     commission=commission,
                     slippage=slippage,
-                    direction="BUY" if profit >= 0 else "SELL",
-                    broker_name=random.choice(
-                        ["Robinhood", "Webull", "E*TRADE", "Charles Schwab", "Interactive Brokers"]
-                    ),
+                    direction=direction,
+                    broker_name=broker_name,
                     posted_at=datetime.now(timezone.utc)
                 )
             )
 
+        # --- Logging ---
         logger.info(
-            f"✅ Trade saved: {txid} | {symbol} | PnL {profit:+.2f} | ROI {roi:+.2f}% | "
-            f"Entry {entry_price} | Exit {exit_price} | Qty {quantity}"
+            f"✅ Trade saved: {txid} | {symbol_upper} | {broker_name} | "
+            f"PnL {profit:+.2f} | ROI {roi:+.2f}% | Entry {entry_price} | Exit {exit_price} | Qty {quantity}"
         )
 
     except Exception as e:
