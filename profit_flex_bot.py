@@ -1208,7 +1208,7 @@ async def profit_posting_loop(app):
 
             # 🔗 Store in DB
             txid = generate_txid()
-            with app['engine'].begin() as conn:
+            with engine.begin() as conn:
                 conn.execute(
                     trade_logs.insert().values(
                         txid=txid,
@@ -1311,7 +1311,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         # 💾 Save to DB
         txid = generate_txid()
-        with app['engine'].begin() as conn:
+        with engine.begin() as conn:
             conn.execute(
                 trade_logs.insert().values(
                     txid=txid,
