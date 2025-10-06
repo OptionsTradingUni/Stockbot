@@ -587,29 +587,38 @@ import numpy as np # Make sure 'import numpy as np' is at the top of your script
 def generate_profit_scenario(symbol: str):
     """
     Generates a realistic simulated trade scenario.
-    Returns:
-      deposit, profit, roi, reason, trading_style, direction
+    Returns: deposit, profit, roi, reason, trading_style, direction
     """
     symbol = (symbol or "").upper()
 
-    # 🎯 Always-positive deposit range
-    deposit = random.randint(150, 18900)
+    # 🎯 Deposit range by type
+    if symbol in MEME_COINS:
+        deposit = random.randint(200, 13500)
+    elif symbol in CRYPTO_SYMBOLS:
+        deposit = random.randint(500, 18300)
+    else:  # stocks
+        deposit = random.randint(1000, 19400)
 
-    # 🎲 ROI realistic mix: about 70% profitable, 30% losing
-    if random.random() < 0.7:
-        # winning trade
-        roi = round(random.uniform(5, 250), 2)
+    # 🎲 Decide win or loss bias
+    win_trade = random.random() < 0.9  # 90% chance win
+
+    if win_trade:
+        if symbol in MEME_COINS:
+            roi = round(random.uniform(30, 700), 2)
+        elif symbol in CRYPTO_SYMBOLS:
+            roi = round(random.uniform(10, 300), 2)
+        else:
+            roi = round(random.uniform(5, 120), 2)
     else:
-        # losing trade
-        roi = round(random.uniform(-55, -5), 2)
+        roi = round(random.uniform(-25, -5), 2)
 
-    # 💰 Calculate profit from ROI
+    # 💰 Calculate profit or loss
     profit = round(deposit * (roi / 100.0), 2)
 
-    # 💹 Direction (BUY = profit, SELL = loss)
-    direction = "BUY" if roi >= 0 else "SELL"
+    # 🧭 Direction (LONG/SHORT)
+    direction = "Bullish" if roi >= 0 else "Bearish"
 
-    # 🧠 Strategy pool (kept exactly from your original)
+    # 📊 Trading style
     trading_styles = [
         "Momentum Reversal", "Scalp Strategy", "Swing Entry",
         "Breakout Play", "Pullback Setup", "News Catalyst",
@@ -617,7 +626,7 @@ def generate_profit_scenario(symbol: str):
     ]
     trading_style = random.choice(trading_styles)
 
-    # 💬 Reason pool (kept exactly from your original)
+    # 💬 Reason message
     if roi >= 0:
         reason = random.choice([
             "Capitalized on strong breakout momentum.",
@@ -629,13 +638,12 @@ def generate_profit_scenario(symbol: str):
     else:
         reason = random.choice([
             "Stop-loss triggered after failed breakout.",
-            "Fell victim to sudden reversal; managed loss quickly.",
             "Bearish engulfing invalidated trade setup.",
             "Unexpected news event caused downside gap.",
+            "Short-term reversal hit tight stop levels.",
             "Tight stop triggered; trade closed in red."
         ])
 
-    # ✅ Return full 6-value tuple exactly like your loop expects
     return deposit, profit, roi, reason, trading_style, direction
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
@@ -1124,7 +1132,7 @@ async def profit_posting_loop(app):
                         deposit = random.randint(500, 5000)
                         roi = pct_change_24h
                         profit = deposit * (roi / 100.0)
-                        direction = "BUY" if roi >= 0 else "SELL"   # ✅ ADD THIS LINE
+                        direction = "Bullish" if roi >= 0 else "Bearish"  # ✅ ADD THIS LINE
                         reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                         trading_style = "Market Analysis"
                         post_title = f"📈 <b>{symbol} Live Market Report</b>"
@@ -1250,7 +1258,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     deposit = random.randint(500, 5000)
                     roi = pct_change_24h
                     profit = deposit * (roi / 100.0)
-                    direction = "BUY" if roi >= 0 else "SELL"   # ✅ ADD THIS LINE
+                    direction = "Bullish" if roi >= 0 else "Bearish"  # ✅ ADD THIS LINE
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                     trading_style = "Market Analysis"
                     post_title = f"📈 <b>{symbol} Live Market Report</b>"
