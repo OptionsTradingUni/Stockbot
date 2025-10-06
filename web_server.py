@@ -28,6 +28,18 @@ def home():
     logging.info("Root URL '/' was hit successfully.")
     return "✅ Web Server is running and accessible."
 
+@app.route("/api/recent")
+def recent_logs():
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT txid, symbol, trader_name, profit, roi, broker_name, posted_at
+            FROM trade_logs
+            ORDER BY posted_at DESC
+            LIMIT 30
+        """))
+        logs = [dict(row._mapping) for row in result]
+    return jsonify(logs)
+
 @app.route('/log/<txid>')
 def show_log(txid):
     """Display verification details for a specific trade."""
