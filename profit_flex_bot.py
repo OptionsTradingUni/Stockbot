@@ -68,6 +68,23 @@ CRYPTO_ID_MAP = {
 
 # import this to access metadata
 
+# --- Direction control setup ---
+TRADE_DIRECTION_CHANCE = 0.25  # 25% of trades will be SELL
+
+def determine_direction(roi, simulated=True):
+    """Auto determine BUY or SELL based on ROI / random flip for simulated trades."""
+    if simulated:
+        # About 25% of simulated trades will be SELL
+        if random.random() < TRADE_DIRECTION_CHANCE:
+            roi = -abs(roi)
+            direction = "SELL"
+        else:
+            roi = abs(roi)
+            direction = "BUY"
+    else:
+        direction = "BUY" if roi >= 0 else "SELL"
+    return roi, direction
+
 # --- NEW unified helper for real entry/exit ---
 def generate_entry_exit(symbol, roi):
     """Generate realistic entry & exit prices for any symbol."""
@@ -131,7 +148,7 @@ def init_traders_if_needed():
 
 def save_trade_log(
     txid, symbol, trader_name, deposit, profit, roi, strategy, reason,
-    entry_price=None, exit_price=None, quantity=None, commission=None, slippage=None
+    entry_price=None, exit_price=None, quantity=None, commission=None, slippage=None, direction=None
 ):
     """Save each posted trade to the database with realistic execution metrics and correct broker mapping."""
     try:
@@ -160,7 +177,7 @@ def save_trade_log(
         total_value_exit = round(quantity * exit_price, 2)
         commission = commission or round(deposit * 0.001, 2)          # 0.1% fee
         slippage = slippage or round(random.uniform(0.01, 0.15), 4)   # 0.01–0.15%
-        direction = "BUY" if profit >= 0 else "SELL"
+        
 
         # --- Insert into DB ---
         with engine.begin() as conn:
@@ -611,6 +628,16 @@ def generate_profit_scenario(symbol):
             f"This {symbol} protocol upgrade was the catalyst we were waiting for.",
         ]
         reason = random.choice(reasons)
+              # Add short-trade specific reasons if direction is SELL
+          if direction == "SELL":
+            reason = random.choice([
+               f"Shorted {symbol} after spotting bearish divergence.",
+               f"Took a {symbol} short as resistance held strong.",
+               f"Faded the {symbol} breakout for a clean short setup.",
+               f"Bearish setup confirmed — shorted {symbol} perfectly.",
+               f"Executed a textbook short play on {symbol}.",
+               f"Sold into the {symbol} rally before the pullback."
+           ])        
         
     else:  # Meme Coins
         trading_style = random.choice([
@@ -629,7 +656,11 @@ def generate_profit_scenario(symbol):
         ]
         reason = random.choice(reasons)
 
-    return deposit, profit, roi, reason, trading_style
+    # --- Add automatic BUY/SELL realism ---
+        roi, direction = determine_direction(roi, simulated=True)
+        profit = deposit * (roi / 100.0)
+
+   return deposit, profit, roi, reason, trading_style, direction
 
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
@@ -1127,7 +1158,7 @@ async def profit_posting_loop(app):
                         use_simulated = True  # small change → switch to simulated
                 if use_simulated or not market_data or market_data == 'generate_fake':
                     # ✅ Simulated trade
-                    deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                    deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
                     post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                     break
                 symbol = random.choice(all_symbols)
@@ -1151,20 +1182,21 @@ async def profit_posting_loop(app):
 
             # ✅ Save to DB
             save_trade_log(
-                txid=txid,
-                symbol=symbol,
-                trader_name=trader_name,
-                deposit=deposit,
-                profit=profit,
-                roi=roi,
-                strategy=trading_style,
-                reason=reason,
-                entry_price=entry_price,
-                exit_price=exit_price,
-                quantity=quantity,
-                commission=commission,
-                slippage=slippage
-            )
+             txid=txid,
+             symbol=symbol,
+             trader_name=trader_name,
+             deposit=deposit,
+             profit=profit,
+             roi=roi,
+             strategy=trading_style,
+             reason=reason,
+             entry_price=entry_price,
+             exit_price=exit_price,
+             quantity=quantity,
+             commission=commission,
+             slippage=slippage,
+             direction=direction
+      )
 
             verification_link = (
                 f'<a href="{log_url}">'
@@ -1238,7 +1270,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 else:
                     use_simulated = True
             if use_simulated or not market_data or market_data == 'generate_fake':
-                deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
                 post_title = f"🎯 <b>{symbol} Live Market Report </b>"
                 break
             symbol = random.choice(all_symbols)
@@ -1260,20 +1292,22 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         # ✅ Save to DB
         save_trade_log(
-            txid=txid,
-            symbol=symbol,
-            trader_name=trader_name,
-            deposit=deposit,
-            profit=profit,
-            roi=roi,
-            strategy=trading_style,
-            reason=reason,
-            entry_price=entry_price,
-            exit_price=exit_price,
-            quantity=quantity,
-            commission=commission,
-            slippage=slippage
-        )
+             txid=txid,
+             symbol=symbol,
+             trader_name=trader_name,
+             deposit=deposit,
+             profit=profit,
+             roi=roi,
+             strategy=trading_style,
+             reason=reason,
+             entry_price=entry_price,
+             exit_price=exit_price,
+             quantity=quantity,
+             commission=commission,
+             slippage=slippage,
+             direction=direction
+      )
+
 
         verification_link = (
             f'<a href="{log_url}">'
