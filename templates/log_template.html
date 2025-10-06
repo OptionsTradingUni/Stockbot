@@ -1,138 +1,176 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trade Log: {{ trade.txid }}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827;
-            color: #d1d5db;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-        }
-        .container {
-            max-width: 800px;
-            width: 100%;
-            background-color: #1f2937;
-            border: 1px solid #374151;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-        .header {
-            background-color: #374151;
-            padding: 20px;
-            border-bottom: 1px solid #4b5563;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-            color: #f9fafb;
-        }
-        .header .status {
-            display: inline-block;
-            margin-top: 8px;
-            padding: 4px 10px;
-            border-radius: 9999px;
-            font-weight: 600;
-            font-size: 14px;
-        }
-        .status-filled { background-color: #10b981; color: #064e3b; }
-        .content { padding: 24px; }
-        .section { margin-bottom: 28px; }
-        .section h2 {
-            font-size: 18px;
-            color: #9ca3af;
-            border-bottom: 1px solid #4b5563;
-            padding-bottom: 8px;
-            margin-bottom: 16px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-        }
-        .grid-item {
-            background-color: #374151;
-            padding: 12px;
-            border-radius: 8px;
-        }
-        .grid-item strong {
-            display: block;
-            font-size: 12px;
-            color: #9ca3af;
-            margin-bottom: 4px;
-        }
-        .grid-item span {
-            font-size: 16px;
-            font-weight: 500;
-            color: #f9fafb;
-        }
-        .profit { color: #22c55e; }
-        .loss { color: #ef4444; }
-        .footer {
-            text-align: center;
-            font-size: 12px;
-            color: #6b7280;
-            padding: 16px;
-            background-color: #111827;
-            border-top: 1px solid #374151;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trade Log: {{ trade.txid }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0f172a;
+      color: #e5e7eb;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      justify-content: center;
+    }
+    .card {
+      width: 100%;
+      max-width: 860px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+      overflow: hidden;
+      animation: fadeIn 0.6s ease;
+    }
+    @keyframes fadeIn {
+      from {opacity: 0; transform: translateY(15px);}
+      to {opacity: 1; transform: translateY(0);}
+    }
+    .header {
+      background: linear-gradient(90deg, #3b82f6, #10b981);
+      padding: 20px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin: 0;
+      color: #fff;
+    }
+    .badge {
+      background: #065f46;
+      color: #d1fae5;
+      padding: 5px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+    .section {
+      padding: 26px 30px;
+      border-bottom: 1px solid #334155;
+    }
+    .section:last-child { border-bottom: none; }
+    .section h2 {
+      font-size: 17px;
+      font-weight: 600;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 0 0 18px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+      gap: 18px;
+    }
+    .item {
+      background: #273449;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .item strong {
+      display: block;
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 4px;
+      letter-spacing: 0.03em;
+    }
+    .item span {
+      font-size: 15px;
+      font-weight: 500;
+      color: #f9fafb;
+    }
+    .profit { color: #22c55e; }
+    .loss { color: #ef4444; }
+    .highlight {
+      font-size: 20px;
+      font-weight: 700;
+      color: #22c55e;
+    }
+    .footer {
+      background: #0f172a;
+      text-align: center;
+      padding: 16px 20px;
+      font-size: 13px;
+      color: #6b7280;
+    }
+    .seal {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #9ca3af;
+    }
+    a { color: #3b82f6; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>{{ trade.broker_name }} - Official Trade Report</h1>
-            <span class="status status-filled">{{ trade.status }}</span>
-        </div>
-        <div class="content">
-            <div class="section">
-                <h2>Trade Details</h2>
-                <div class="grid">
-                    <div class="grid-item"><strong>Order ID</strong><span>{{ trade.txid }}</span></div>
-                    <div class="grid-item"><strong>Instrument</strong><span>{{ trade.symbol }}</span></div>
-                    <div class="grid-item"><strong>Execution Time</strong><span>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span></div>
-                    <div class="grid-item"><strong>Direction</strong><span>{{ trade.direction }}</span></div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Execution & Value</h2>
-                <div class="grid">
-                    <div class="grid-item"><strong>Quantity</strong><span>{{ "%.6f" | format(trade.quantity) }}</span></div>
-                    <div class="grid-item"><strong>Entry Price</strong><span>${{ "%.4f" | format(trade.entry_price) }}</span></div>
-                    <div class="grid-item"><strong>Exit Price</strong><span>${{ "%.4f" | format(trade.exit_price) }}</span></div>
-                    <div class="grid-item"><strong>Initial Value</strong><span>${{ "%.2f" | format(trade.deposit) }}</span></div>
-                    <div class="grid-item"><strong>Final Value</strong><span>${{ "%.2f" | format(trade.total_value_exit) }}</span></div>
-                    <div class="grid-item"><strong>Fees/Comm.</strong><span>${{ "%.2f" | format(trade.commission) }}</span></div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Performance & Risk</h2>
-                <div class="grid">
-                    <div class="grid-item">
-                        <strong>Realized P/L</strong>
-                        <span class="profit">+${{ "%.2f" | format(trade.profit) }}</span>
-                    </div>
-                    <div class="grid-item"><strong>Slippage</strong><span>{{ "%.4f" | format(trade.slippage) }}%</span></div>
-                    <div class="grid-item"><strong>Trader</strong><span>{{ trade.trader_name }}</span></div>
-                </div>
-            </div>
-        </div>
-        <div class="footer">
-            Powered by Options Trading University.
-        </div>
+  <div class="card">
+    <div class="header">
+      <h1>{{ trade.broker_name or "Verified Exchange" }} — Official Trade Report</h1>
+      <div class="badge">{{ trade.status or "Filled" }}</div>
     </div>
+
+    <div class="section">
+      <h2>Trade Overview</h2>
+      <div class="grid">
+        <div class="item"><strong>Transaction ID</strong><span>{{ trade.txid }}</span></div>
+        <div class="item"><strong>Asset</strong><span>{{ trade.symbol }}</span></div>
+        <div class="item"><strong>Trader</strong><span>{{ trade.trader_name }}</span></div>
+        <div class="item"><strong>Strategy</strong><span>{{ trade.strategy or "N/A" }}</span></div>
+        <div class="item"><strong>Execution Time</strong><span>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Performance</h2>
+      <div class="grid">
+        <div class="item"><strong>Deposit</strong><span>${{ "%.2f"|format(trade.deposit or 0) }}</span></div>
+        <div class="item">
+          <strong>Profit / Loss</strong>
+          {% if trade.profit >= 0 %}
+            <span class="highlight profit">+${{ "%.2f"|format(trade.profit) }}</span>
+          {% else %}
+            <span class="highlight loss">-${{ "%.2f"|format(abs(trade.profit)) }}</span>
+          {% endif %}
+        </div>
+        <div class="item"><strong>ROI</strong><span>{{ "%.2f"|format(trade.roi or 0) }}%</span></div>
+        <div class="item"><strong>Direction</strong><span>{{ trade.direction }}</span></div>
+      </div>
+    </div>
+
+    {% if trade.reason %}
+    <div class="section">
+      <h2>Trade Reasoning</h2>
+      <p style="color:#f3f4f6; font-size:15px; line-height:1.6;">
+        {{ trade.reason }}
+      </p>
+    </div>
+    {% endif %}
+
+    <div class="section">
+      <h2>Execution Metrics</h2>
+      <div class="grid">
+        <div class="item"><strong>Entry Price</strong><span>${{ "%.4f"|format(trade.entry_price or 0) }}</span></div>
+        <div class="item"><strong>Exit Price</strong><span>${{ "%.4f"|format(trade.exit_price or 0) }}</span></div>
+        <div class="item"><strong>Quantity</strong><span>{{ "%.6f"|format(trade.quantity or 1.0) }}</span></div>
+        <div class="item"><strong>Fees / Commission</strong><span>${{ "%.2f"|format(trade.commission or 0) }}</span></div>
+        <div class="item"><strong>Slippage</strong><span>{{ "%.4f"|format(trade.slippage or 0) }}%</span></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      ✅ Verified & recorded by <b>Options Trading University</b><br>
+      <div class="seal">
+        This on-chain / broker-synced trade report is auto-generated from the Profit Flex Bot.<br>
+        <a href="/">Return Home</a>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
