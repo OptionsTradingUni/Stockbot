@@ -1129,7 +1129,7 @@ async def profit_posting_loop(app):
             # Pick a random symbol from all categories
             symbol = random.choice(ALL_SYMBOLS)
             use_simulated = random.random() < 0.7  # 70% simulated, 30% real
-            trader = random.choice(verified_traders)
+            trader = random.choice(RANKING_TRADERS)
             broker_name = random.choice(BROKERS)
             timestamp = datetime.now(timezone.utc)
 
@@ -1234,7 +1234,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         symbol = random.choice(ALL_SYMBOLS)
         use_simulated = random.random() < 0.7  # 70% simulated
-        trader = random.choice(verified_traders)
+        trader = random.choice(RANKING_TRADERS)
         broker_name = random.choice(BROKERS)
         timestamp = datetime.now(timezone.utc)
 
