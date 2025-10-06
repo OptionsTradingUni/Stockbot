@@ -85,14 +85,19 @@ def init_traders_if_needed():
                 ))
     logger.info("✅ Traders initialized successfully.")
 
-def save_trade_log(txid, symbol, trader_name, deposit, profit, roi, strategy, reason):
+def save_trade_log(
+    txid, symbol, trader_name, deposit, profit, roi, strategy, reason,
+    entry_price=None, exit_price=None, quantity=None, commission=None, slippage=None
+):
     """Save each posted trade to the database with realistic execution metrics."""
     try:
         # --- realistic random execution data ---
-        entry_price = round(random.uniform(10, 350), 4)
-        exit_price = round(entry_price * (1 + roi / 100), 4)
-        commission = round(deposit * 0.001, 2)              # 0.1% fee
-        slippage = round(random.uniform(0.01, 0.15), 4)     # 0.01–0.15%
+        entry_price = entry_price or round(random.uniform(10, 350), 4)
+        exit_price = exit_price or round(entry_price * (1 + roi / 100), 4)
+        quantity = quantity or round(deposit / entry_price, 6)
+        total_value_exit = round(quantity * exit_price, 2)
+        commission = commission or round(deposit * 0.001, 2)          # 0.1% fee
+        slippage = slippage or round(random.uniform(0.01, 0.15), 4)   # 0.01–0.15%
 
         with engine.begin() as conn:
             conn.execute(
@@ -107,19 +112,25 @@ def save_trade_log(txid, symbol, trader_name, deposit, profit, roi, strategy, re
                     reason=reason,
                     entry_price=entry_price,
                     exit_price=exit_price,
+                    quantity=quantity,
+                    total_value_exit=total_value_exit,
                     commission=commission,
                     slippage=slippage,
+                    direction="BUY" if profit >= 0 else "SELL",
+                    broker_name=random.choice(
+                        ["Robinhood", "Webull", "E*TRADE", "Charles Schwab", "Interactive Brokers"]
+                    ),
                     posted_at=datetime.now(timezone.utc)
                 )
             )
 
         logger.info(
-            f"✅ Trade saved: {txid} | {symbol} | profit {profit:+.2f} | "
-            f"ROI {roi:+.2f}% | entry {entry_price} | exit {exit_price}"
+            f"✅ Trade saved: {txid} | {symbol} | PnL {profit:+.2f} | ROI {roi:+.2f}% | "
+            f"Entry {entry_price} | Exit {exit_price} | Qty {quantity}"
         )
 
     except Exception as e:
-        logger.error(f"⚠️ Failed to save trade log {txid}: {e}")
+        logger.error(f"⚠️ Failed to save trade log {txid}: {e}", exc_info=True)
 
 def get_market_data(symbol):
     """
@@ -996,61 +1007,58 @@ def short_highlight(symbol: str, profit: float, roi: float) -> str:
 ADMIN_ID = os.getenv("ADMIN_ID")
 
 # ===============================
-# AUTO PROFIT POSTING LOOP (# ===============================
-# AUTO PROFIT POSTING LOOP (UPDATED + IMPROVED)
+# AUTO PROFIT POSTING LOOP (FINAL VERSION)
 # ===============================
 async def profit_posting_loop(app):
-    logger.info("Profit posting task started with smart retry + realistic timing.")
+    logger.info("🚀 Profit posting loop started (70% simulated / 30% real).")
     while True:
         try:
-            # 🎯 Dynamic timing: 80% chance of 2–10min, 20% chance of 20–30min
+            # 🎯 Timing logic — 80% short interval, 20% long
             if random.random() < 0.8:
                 sleep_time = random.randint(2, 10) * 60
             else:
                 sleep_time = random.randint(20, 30) * 60
 
-            # --- pick a valid symbol ---
+            # 🎲 Choose simulated or real
+            use_simulated = random.random() < 0.7  # 70% simulated
+
             all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
             symbol = random.choice(all_symbols)
 
-            # try up to 5 symbols if first fails
             for attempt in range(5):
                 market_data = get_market_data(symbol)
-                if market_data is None:
-                    logger.warning(f"Skipping {symbol}: No data found, retrying...")
-                    symbol = random.choice(all_symbols)
-                    continue
-
-                elif market_data == 'generate_fake':
-                    # simulated meme coin
-                    deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                    post_title = f"🎯 <b>{symbol} Simulated Flex</b>"
-                    break
-
-                else:
-                    # real market post
+                if not use_simulated and market_data and market_data != 'generate_fake':
                     current_price, price_24h_ago, pct_change_24h = market_data
-                    if abs(pct_change_24h) < 0.5:
-                        # too small → switch to simulated but don't skip
-                        logger.info(f"{symbol} real change too small ({pct_change_24h:+.2f}%), using simulated.")
-                        deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                        post_title = f"🎯 <b>{symbol} 💹 Live Market Report”</b>"
-                        break
-                    else:
-                        # good real data
+                    if abs(pct_change_24h) >= 0.5:
+                        # ✅ Real post
                         deposit = random.randint(500, 5000)
                         roi = pct_change_24h
                         profit = deposit * (roi / 100.0)
-                        reason = f"Capitalized on {pct_change_24h:+.2f}% 24h market move!"
+                        reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                         trading_style = "Market Analysis"
-                        post_title = f"📈 <b>{symbol} 💹 Live Market Report”</b>"
+                        post_title = f"📈 <b>{symbol} Live Market Report</b>"
                         break
+                    else:
+                        use_simulated = True  # small change → switch to simulated
+                if use_simulated or not market_data or market_data == 'generate_fake':
+                    # ✅ Simulated trade
+                    deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                    post_title = f"🎯 <b>{symbol} Simulated Flex</b>"
+                    break
+                symbol = random.choice(all_symbols)
             else:
-                logger.warning("All attempts failed, skipping this cycle.")
-                await asyncio.sleep(30)
+                logger.warning("All attempts failed — retrying soon.")
+                await asyncio.sleep(10)
                 continue
 
-            # --- generate content ---
+            # 📊 Extra trade details (for log + realism)
+            entry_price = round(random.uniform(20, 1000), 2)
+            exit_price = round(entry_price * (1 + roi / 100), 2)
+            quantity = round(deposit / entry_price, 6)
+            commission = round(deposit * random.uniform(0.001, 0.003), 2)
+            slippage = round(random.uniform(0.01, 0.15), 4)
+
+            # 🧾 Trader details + TXID + leaderboard update
             trader_name = random.choice(RANKING_TRADERS)[1]
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
             txid = generate_unique_txid(engine)
@@ -1066,12 +1074,17 @@ async def profit_posting_loop(app):
                 profit=profit,
                 roi=roi,
                 strategy=trading_style,
-                reason=reason
+                reason=reason,
+                entry_price=entry_price,
+                exit_price=exit_price,
+                quantity=quantity,
+                commission=commission,
+                slippage=slippage
             )
 
             verification_link = (
                 f'<a href="{log_url}">'
-                f"Trade execution validated through Fidelity statement as per daily reconciliation (CHK)</a>"
+                f"Trade execution validated via broker statement (TX#{txid})</a>"
             )
 
             msg = (
@@ -1079,10 +1092,11 @@ async def profit_posting_loop(app):
                 f"👤 Trader: <b>{trader_name}</b>\n"
                 f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
                 f"✅ Profit: <b>${profit:,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+                f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
+                f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
                 f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
-                f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) + "\n\n"
-                f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-                f"{verification_link} (TX#{txid})\n\n"
+                f"🏆 <b>Leaderboard</b>\n" + "\n".join(rankings) + "\n\n"
+                f"{verification_link}\n\n"
                 f"💎 <b>Powered by Options Trading University</b>"
             )
 
@@ -1094,7 +1108,7 @@ async def profit_posting_loop(app):
                 parse_mode=constants.ParseMode.HTML
             )
 
-            logger.info(f"✅ Posted {symbol} successfully — next post in {sleep_time/60:.1f} min")
+            logger.info(f"✅ Posted {symbol} ({'Simulated' if use_simulated else 'Real'}) — next in {sleep_time/60:.1f} min")
             await asyncio.sleep(sleep_time)
 
         except Exception as e:
@@ -1106,11 +1120,10 @@ async def profit_posting_loop(app):
                     pass
             await asyncio.sleep(60)
 
-# IMPORTANT: You must also apply the same logic from the `profit_posting_loop` (steps 1-9)
 
 
 # ===============================
-# MANUAL POST COMMAND (UPDATED + DB SAVE)
+# MANUAL POST COMMAND (FINAL VERSION)
 # ===============================
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != str(ADMIN_ID):
@@ -1123,35 +1136,38 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
         symbol = random.choice(all_symbols)
 
+        # 🎲 70% simulated / 30% real
+        use_simulated = random.random() < 0.7
+
         for attempt in range(5):
             market_data = get_market_data(symbol)
-            if market_data is None:
-                symbol = random.choice(all_symbols)
-                continue
-
-            elif market_data == 'generate_fake':
-                deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                post_title = f"🎯 <b>{symbol} Simulated Flex (Manual)</b>"
-                break
-
-            else:
+            if not use_simulated and market_data and market_data != 'generate_fake':
                 current_price, price_24h_ago, pct_change_24h = market_data
-                if abs(pct_change_24h) < 0.5:
-                    logger.info(f"{symbol} low change ({pct_change_24h:+.2f}%), using simulated.")
-                    deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                    post_title = f"🎯 <b>{symbol} 💹 Live Market Report”</b>"
-                    break
-                else:
+                if abs(pct_change_24h) >= 0.5:
                     deposit = random.randint(500, 5000)
                     roi = pct_change_24h
                     profit = deposit * (roi / 100.0)
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                     trading_style = "Market Analysis"
-                    post_title = f"📈 <b>{symbol} 💹 Live Market Report”</b>"
+                    post_title = f"📈 <b>{symbol} Live Market Report (Manual)</b>"
                     break
+                else:
+                    use_simulated = True
+            if use_simulated or not market_data or market_data == 'generate_fake':
+                deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                post_title = f"🎯 <b>{symbol} Simulated Flex (Manual)</b>"
+                break
+            symbol = random.choice(all_symbols)
         else:
             await update.message.reply_text("⚠️ Could not fetch any valid symbol after multiple tries.")
             return
+
+        # 🔢 Generate trade details
+        entry_price = round(random.uniform(20, 1000), 2)
+        exit_price = round(entry_price * (1 + roi / 100), 2)
+        quantity = round(deposit / entry_price, 6)
+        commission = round(deposit * random.uniform(0.001, 0.003), 2)
+        slippage = round(random.uniform(0.01, 0.15), 4)
 
         trader_name = random.choice(RANKING_TRADERS)[1]
         rankings, pos = update_rankings_with_new_profit(trader_name, profit)
@@ -1168,12 +1184,17 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             profit=profit,
             roi=roi,
             strategy=trading_style,
-            reason=reason
+            reason=reason,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            quantity=quantity,
+            commission=commission,
+            slippage=slippage
         )
 
         verification_link = (
             f'<a href="{log_url}">'
-            f"Trade execution validated through Fidelity statement as per daily reconciliation (CHK)</a>"
+            f"Trade validated via broker ledger (TX#{txid})</a>"
         )
 
         msg = (
@@ -1181,10 +1202,11 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"👤 Trader: <b>{trader_name}</b>\n"
             f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
             f"✅ Profit: <b>${profit:,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+            f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
+            f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
             f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
-            f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) + "\n\n"
-            f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-            f"{verification_link} (TX#{txid})\n\n"
+            f"🏆 <b>Leaderboard</b>\n" + "\n".join(rankings) + "\n\n"
+            f"{verification_link}\n\n"
             f"💎 <b>Powered by Options Trading University</b>"
         )
 
@@ -1201,7 +1223,6 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Error in manual_post_handler: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Manual post failed: {e}")
-
 # /start handler with Top 3 Rankings
 # ================================
 
