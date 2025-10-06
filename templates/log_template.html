@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trade Log: {{ trade.txid }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #d1d5db;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background-color: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background-color: #374151;
+            padding: 20px;
+            border-bottom: 1px solid #4b5563;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #f9fafb;
+        }
+        .header .status {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .status-filled { background-color: #10b981; color: #064e3b; }
+        .content { padding: 24px; }
+        .section { margin-bottom: 28px; }
+        .section h2 {
+            font-size: 18px;
+            color: #9ca3af;
+            border-bottom: 1px solid #4b5563;
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+        .grid-item {
+            background-color: #374151;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .grid-item strong {
+            display: block;
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 4px;
+        }
+        .grid-item span {
+            font-size: 16px;
+            font-weight: 500;
+            color: #f9fafb;
+        }
+        .profit { color: #22c55e; }
+        .loss { color: #ef4444; }
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #6b7280;
+            padding: 16px;
+            background-color: #111827;
+            border-top: 1px solid #374151;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ trade.broker_name }} - Official Trade Report</h1>
+            <span class="status status-filled">{{ trade.status }}</span>
+        </div>
+        <div class="content">
+            <div class="section">
+                <h2>Trade Details</h2>
+                <div class="grid">
+                    <div class="grid-item"><strong>Order ID</strong><span>{{ trade.txid }}</span></div>
+                    <div class="grid-item"><strong>Instrument</strong><span>{{ trade.symbol }}</span></div>
+                    <div class="grid-item"><strong>Execution Time</strong><span>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span></div>
+                    <div class="grid-item"><strong>Direction</strong><span>{{ trade.direction }}</span></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Execution & Value</h2>
+                <div class="grid">
+                    <div class="grid-item"><strong>Quantity</strong><span>{{ "%.6f" | format(trade.quantity) }}</span></div>
+                    <div class="grid-item"><strong>Entry Price</strong><span>${{ "%.4f" | format(trade.entry_price) }}</span></div>
+                    <div class="grid-item"><strong>Exit Price</strong><span>${{ "%.4f" | format(trade.exit_price) }}</span></div>
+                    <div class="grid-item"><strong>Initial Value</strong><span>${{ "%.2f" | format(trade.deposit) }}</span></div>
+                    <div class="grid-item"><strong>Final Value</strong><span>${{ "%.2f" | format(trade.total_value_exit) }}</span></div>
+                    <div class="grid-item"><strong>Fees/Comm.</strong><span>${{ "%.2f" | format(trade.commission) }}</span></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Performance & Risk</h2>
+                <div class="grid">
+                    <div class="grid-item">
+                        <strong>Realized P/L</strong>
+                        <span class="profit">+${{ "%.2f" | format(trade.profit) }}</span>
+                    </div>
+                    <div class="grid-item"><strong>Slippage</strong><span>{{ "%.4f" | format(trade.slippage) }}%</span></div>
+                    <div class="grid-item"><strong>Trader</strong><span>{{ trade.trader_name }}</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="footer">
+            Powered by Options Trading University | This is a simulated trade log for educational and entertainment purposes.
+        </div>
+    </div>
+</body>
+</html>
