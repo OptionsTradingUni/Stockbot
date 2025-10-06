@@ -228,46 +228,89 @@ def save_trade_log(
     except Exception as e:
         logger.error(f"⚠️ Failed to save trade log {txid}: {e}", exc_info=True)
 
+import requests
+
+def get_binance_price(symbol_upper):
+    """
+    Try to fetch real-time crypto price and 24h change from Binance.
+    Returns (current_price, price_24h_ago, percent_change) or None.
+    """
+    try:
+        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol_upper}USDT"
+        res = requests.get(url, timeout=5)
+        if res.status_code != 200:
+            return None
+        data = res.json()
+        current_price = float(data["lastPrice"])
+        price_24h_ago = float(data["prevClosePrice"])
+        percent_change = float(data["priceChangePercent"])
+        return current_price, price_24h_ago, percent_change
+    except Exception as e:
+        logger.warning(f"⚠️ Binance API error for {symbol_upper}: {e}")
+        return None
+
+
 def get_market_data(symbol):
     """
-    Fetches real data for known assets, or signals to generate fake data for custom coins.
-    Returns: Tuple (current_price, price_24h_ago, % change), 'generate_fake', or None.
+    Fetches live market data for known assets.
+    Tries Binance first for crypto, falls back to CoinGecko.
+    Returns tuple (current_price, price_24h_ago, %change) or 'generate_fake' or None.
     """
     symbol_upper = symbol.upper()
     logger.info(f"Processing market data for {symbol_upper}...")
+
     try:
+        # ---------- STOCKS ----------
         if symbol_upper in STOCK_SYMBOLS:
             stock = yf.Ticker(symbol_upper)
             hist = stock.history(period="2d")
-            if len(hist) < 2: return None
-            current_price = hist['Close'].iloc[-1]
-            price_24h_ago = hist['Close'].iloc[-2]
-            if price_24h_ago == 0: return None
+            if len(hist) < 2:
+                return None
+            current_price = hist["Close"].iloc[-1]
+            price_24h_ago = hist["Close"].iloc[-2]
+            if price_24h_ago == 0:
+                return None
             percent_change = ((current_price - price_24h_ago) / price_24h_ago) * 100
             return (current_price, price_24h_ago, percent_change)
+
+        # ---------- CRYPTO / MEME ----------
         elif symbol_upper in CRYPTO_SYMBOLS or symbol_upper in MEME_COINS:
+            # 1️⃣ Try Binance first
+            data = get_binance_price(symbol_upper)
+            if data:
+                logger.info(f"✅ Fetched {symbol_upper} from Binance.")
+                return data
+
+            # 2️⃣ Fallback → CoinGecko
             api_id = CRYPTO_ID_MAP.get(symbol_upper)
             if not api_id:
                 if symbol_upper in MEME_COINS:
-                    logger.info(f"'{symbol_upper}' is a custom meme coin. Signaling to generate FAKE data.")
-                    return 'generate_fake'
+                    logger.info(f"'{symbol_upper}' is a custom meme coin → generate FAKE data.")
+                    return "generate_fake"
                 return None
-            coin_data = cg.get_coin_by_id(id=api_id, market_data='true', sparkline='false', tickers='false', community_data='false', developer_data='false')
-            market_data = coin_data.get('market_data', {})
-            current_price = market_data.get('current_price', {}).get('usd')
-            percent_change = market_data.get('price_change_percentage_24h')
+
+            logger.info(f"🔁 Falling back to CoinGecko for {symbol_upper}...")
+            coin_data = cg.get_coin_by_id(
+                id=api_id,
+                market_data="true",
+                sparkline="false",
+                tickers="false",
+                community_data="false",
+                developer_data="false"
+            )
+            market_data = coin_data.get("market_data", {})
+            current_price = market_data.get("current_price", {}).get("usd")
+            percent_change = market_data.get("price_change_percentage_24h")
             if current_price is not None and percent_change is not None:
                 price_24h_ago = current_price / (1 + (percent_change / 100.0))
                 return (current_price, price_24h_ago, percent_change)
+
+        # ---------- UNKNOWN ----------
+        return None
+
     except Exception as e:
         logger.error(f"API error for {symbol_upper}: {e}", exc_info=False)
-    return None
-
-
-
-
-
-
+        return None
 # ✅ Track last posted category (so posts rotate properly)
 last_category = None
 # ===============================
