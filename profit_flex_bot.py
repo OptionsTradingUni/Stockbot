@@ -1227,7 +1227,7 @@ async def profit_posting_loop(app):
                 )
 
             # 📢 Post to Telegram
-            await bot.send_message(chat_id=CHANNEL_ID, text=caption, parse_mode="HTML")
+            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=caption, parse_mode="HTML")
 
             logger.info(f"✅ Posted trade: {symbol} | {profit:+.2f} | {direction} | {'REAL' if not use_simulated else 'SIM'}")
 
@@ -1328,7 +1328,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
 
         await update.message.reply_text("✅ Trade posted successfully!")
-        await bot.send_message(chat_id=CHANNEL_ID, text=caption, parse_mode="HTML")
+        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=caption, parse_mode="HTML")
 
     except Exception as e:
         logger.error(f"❌ Error in manual_post_handler: {e}", exc_info=True)
