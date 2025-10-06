@@ -943,7 +943,7 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 # AUTO PROFIT POSTING LOOP (UPDATED)
 # ===============================
 async def profit_posting_loop(app):
-    logger.info("Profit posting task started with REALITY vs. SIMULATED logic.")
+    logger.info("Profit posting task started with DYNAMIC verification text.")
     while True:
         try:
             await asyncio.sleep(random.randint(20, 40) * 60)
@@ -959,10 +959,8 @@ async def profit_posting_loop(app):
 
             elif market_data == 'generate_fake':
                 deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                entry_price = random.uniform(0.00001, 0.005)
-                exit_price = entry_price * (1 + (roi / 100.0))
-                quantity = deposit / entry_price if entry_price > 0 else 0
                 post_title = f"🚀 <b>{symbol} Custom Meme Flex</b>"
+
             else:
                 if random.random() < 0.5: # REALITY post
                     exit_price_val, entry_price_val, pct_change_24h = market_data
@@ -971,38 +969,42 @@ async def profit_posting_loop(app):
                         continue
                     deposit, roi = random.randint(500, 5000), pct_change_24h
                     profit = deposit * (roi / 100.0)
-                    quantity = deposit / entry_price_val if entry_price_val > 0 else 0
-                    entry_price, exit_price = entry_price_val, exit_price_val
                     reason = f"Capitalized on the 24h market move of {pct_change_24h:+.2f}%!"
                     trading_style = "Market Analysis"
                     post_title = f"📈 <b>{symbol} Real Market Flex</b>"
                 else: # SIMULATED post
                     deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                    entry_price = random.uniform(20.0, 200.0) if symbol in STOCK_SYMBOLS + CRYPTO_SYMBOLS else random.uniform(0.001, 0.1)
-                    exit_price = entry_price * (1 + (roi / 100.0))
-                    quantity = deposit / entry_price if entry_price > 0 else 0
                     post_title = f"🎯 <b>{symbol} Simulated Flex</b>"
 
+            # --- Common posting logic ---
             trader_name = random.choice(RANKING_TRADERS)[1]
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
+            txid = generate_unique_txid(engine)
+            
+            # --- THIS IS THE CORRECTED DYNAMIC VERIFICATION ---
+            verification_text, broker_name = get_random_verification(symbol, txid, engine)
+
             msg = (
                 f"{post_title}\n"
                 f"👤 Trader: <b>{trader_name}</b>\n"
-                f"💰 Deposit: <b>${deposit:,.2f}</b>\n\n"
-                f"➡️ Entry Price: <b>${entry_price:,.4f}</b>\n"
-                f"⬅️ Exit Price: <b>${exit_price:,.4f}</b>\n"
-                f"📦 Quantity: <b>{quantity:,.4f}</b>\n\n"
+                f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
                 f"✅ Profit: <b>${profit:,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
                 f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
-                f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
-                f"\n\n🌍 <b>Powered by Options Trading University</b>"
+                f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) + "\n\n"
+                f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
+                f"{verification_text}\n"
+                f"(TX#{txid})\n\n"
+                f"💎 <b>Powered by Options Trading University</b>"
             )
+
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
             await app.bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img_buf, caption=msg, parse_mode=constants.ParseMode.HTML)
         except Exception as e:
             logger.error(f"Error in main posting loop: {e}", exc_info=True)
             if ADMIN_ID: await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
             await asyncio.sleep(60)
+
+
 
 # IMPORTANT: You must also apply the same logic from the `profit_posting_loop` (steps 1-9)
 
@@ -1014,7 +1016,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if str(update.effective_user.id) != str(ADMIN_ID):
         await update.message.reply_text("🚫 You are not authorized.")
         return
-    await update.message.reply_text("⏳ Generating manual post with final logic...")
+    await update.message.reply_text("⏳ Generating manual post with DYNAMIC verification...")
     try:
         r = random.random()
         if r < 0.50: symbol = random.choice(STOCK_SYMBOLS)
@@ -1027,9 +1029,6 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
         elif market_data == 'generate_fake':
             deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-            entry_price = random.uniform(0.00001, 0.005)
-            exit_price = entry_price * (1 + (roi / 100.0))
-            quantity = deposit / entry_price if entry_price > 0 else 0
             post_title = f"🚀 <b>{symbol} Custom Meme Flex (Manual)</b>"
         else:
             if random.random() < 0.5: # REALITY POST
@@ -1039,32 +1038,33 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     return
                 deposit, roi = random.randint(500, 5000), pct_change_24h
                 profit = deposit * (roi / 100.0)
-                quantity = deposit / entry_price_val if entry_price_val > 0 else 0
-                entry_price, exit_price = entry_price_val, exit_price_val
                 reason = f"Capitalized on the 24h market move of {pct_change_24h:+.2f}%!"
                 trading_style = "Market Analysis"
                 post_title = f"📈 <b>{symbol} Real Market Flex (Manual)</b>"
             else: # SIMULATED POST
                 deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                entry_price = random.uniform(20.0, 200.0) if symbol in STOCK_SYMBOLS + CRYPTO_SYMBOLS else random.uniform(0.001, 0.1)
-                exit_price = entry_price * (1 + (roi / 100.0))
-                quantity = deposit / entry_price if entry_price > 0 else 0
                 post_title = f"🎯 <b>{symbol} Simulated Flex (Manual)</b>"
-        
+
         trader_name = random.choice(RANKING_TRADERS)[1]
         rankings, pos = update_rankings_with_new_profit(trader_name, profit)
+        txid = generate_unique_txid(engine)
+        
+        # --- THIS IS THE CORRECTED DYNAMIC VERIFICATION ---
+        verification_text, broker_name = get_random_verification(symbol, txid, engine)
+
         msg = (
             f"{post_title}\n"
             f"👤 Trader: <b>{trader_name}</b>\n"
-            f"💰 Deposit: <b>${deposit:,.2f}</b>\n\n"
-            f"➡️ Entry Price: <b>${entry_price:,.4f}</b>\n"
-            f"⬅️ Exit Price: <b>${exit_price:,.4f}</b>\n"
-            f"📦 Quantity: <b>{quantity:,.4f}</b>\n\n"
+            f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
             f"✅ Profit: <b>${profit:,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
             f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
-            f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
-            f"\n\n🌍 <b>Powered by Options Trading University</b>"
+            f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) + "\n\n"
+            f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
+            f"{verification_text}\n"
+            f"(TX#{txid})\n\n"
+            f"💎 <b>Powered by Options Trading University</b>"
         )
+        
         img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
         await context.bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img_buf, caption=msg, parse_mode=constants.ParseMode.HTML)
         await update.message.reply_text(f"✅ Manual post for {symbol} sent successfully!")
