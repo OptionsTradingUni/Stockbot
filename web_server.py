@@ -55,7 +55,10 @@ def recent_trade_logs():
                 "trader_name": row["trader_name"],
                 "profit": float(row["profit"] or 0),
                 "roi": float(row["roi"] or 0),
-                "posted_at": row["posted_at"].isoformat() if row["posted_at"] else None
+                "posted_at": (
+                    row["posted_at"].isoformat()
+                    if row["posted_at"] else datetime.now(timezone.utc).isoformat()
+                )
             })
 
         return jsonify(data), 200
@@ -65,6 +68,8 @@ def recent_trade_logs():
         traceback.print_exc()
         logger.error(f"⚠️ Error fetching /api/recent: {e}")
         return jsonify({"error": str(e)}), 500
+
+
 @app.route('/log/<txid>')
 def show_log(txid):
     """Display verification details for a specific trade."""
