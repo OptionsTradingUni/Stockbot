@@ -36,8 +36,7 @@ def page_not_found(e):
 
 @app.route('/')
 def home():
-    return "✅ Profit Flex Web Server Running", 200
-
+    return "✅ Stockbot Web Server is Live — use /log/<TXID> to view trade logs."
 @app.route('/health')
 def health():
     return "ok", 200
