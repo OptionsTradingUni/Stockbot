@@ -593,11 +593,11 @@ def generate_profit_scenario(symbol: str):
 
     # 🎯 Deposit range by type
     if symbol in MEME_COINS:
-        deposit = random.randint(200, 13500)
+        deposit = random.randint(200, 7500)
     elif symbol in CRYPTO_SYMBOLS:
-        deposit = random.randint(500, 18300)
+        deposit = random.randint(500, 10500)
     else:  # stocks
-        deposit = random.randint(1000, 19400)
+        deposit = random.randint(1000, 12000)
 
     # 🎲 Decide win or loss bias
     win_trade = random.random() < 0.9  # 90% chance win
