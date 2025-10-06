@@ -33,3 +33,11 @@ def show_log(txid):
 def page_not_found(e):
     # Custom 404 page
     return render_template('404.html'), 404
+
+@app.route('/')
+def home():
+    return "✅ Profit Flex Web Server Running", 200
+
+@app.route('/health')
+def health():
+    return "ok", 200
