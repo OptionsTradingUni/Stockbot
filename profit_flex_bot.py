@@ -575,24 +575,20 @@ def generate_profit_scenario(symbol):
     """
     # --- Step 1: Define parameters for different asset types ---
     if symbol in MEME_COINS:
-        # For memes: Higher average returns, wider spread of possibilities
         deposit = random.randint(100, 9700)
         avg_multiplier = 3.5  # Avg 250% ROI
         spread = 1.5
     else:  # Stocks & Regular Crypto
-        # For stocks/crypto: More conservative returns, tighter spread
         deposit = random.randint(500, 16500)
         avg_multiplier = 1.5  # Avg 50% ROI
         spread = 0.4
 
-    # --- Step 2: Generate a multiplier from a natural distribution ---
+    # --- Step 2: Generate a multiplier ---
     multiplier = max(1.1, np.random.normal(loc=avg_multiplier, scale=spread))
-
-    # --- Step 3: Calculate the final numbers ---
     profit = deposit * (multiplier - 1)
     roi = (multiplier - 1) * 100
 
-    # --- Step 4: Generate a trading style and a varied reason ---
+    # --- Step 3: Generate trading style and reason ---
     if symbol in STOCK_SYMBOLS:
         trading_style = random.choice([
             "Scalping", "Day Trading", "Swing Trading", "Position Trade",
@@ -628,17 +624,7 @@ def generate_profit_scenario(symbol):
             f"This {symbol} protocol upgrade was the catalyst we were waiting for.",
         ]
         reason = random.choice(reasons)
-              # Add short-trade specific reasons if direction is SELL
-          if direction == "SELL":
-            reason = random.choice([
-               f"Shorted {symbol} after spotting bearish divergence.",
-               f"Took a {symbol} short as resistance held strong.",
-               f"Faded the {symbol} breakout for a clean short setup.",
-               f"Bearish setup confirmed — shorted {symbol} perfectly.",
-               f"Executed a textbook short play on {symbol}.",
-               f"Sold into the {symbol} rally before the pullback."
-           ])        
-        
+
     else:  # Meme Coins
         trading_style = random.choice([
             "Community Flip", "Pump Ride", "Sniping", "Ape-in",
@@ -656,12 +642,22 @@ def generate_profit_scenario(symbol):
         ]
         reason = random.choice(reasons)
 
-    # --- Add automatic BUY/SELL realism ---
-        roi, direction = determine_direction(roi, simulated=True)
-        profit = deposit * (roi / 100.0)
+    # --- Step 4: Add automatic BUY/SELL realism ---
+    roi, direction = determine_direction(roi, simulated=True)
+    profit = deposit * (roi / 100.0)
 
-   return deposit, profit, roi, reason, trading_style, direction
+    # --- Step 5: Add short-trade reasons if SELL ---
+    if direction == "SELL":
+        reason = random.choice([
+            f"Shorted {symbol} after spotting bearish divergence.",
+            f"Took a {symbol} short as resistance held strong.",
+            f"Faded the {symbol} breakout for a clean short setup.",
+            f"Bearish setup confirmed — shorted {symbol} perfectly.",
+            f"Executed a textbook short play on {symbol}.",
+            f"Sold into the {symbol} rally before the pullback."
+        ])
 
+    return deposit, profit, roi, reason, trading_style, direction
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
         if is_meme:
