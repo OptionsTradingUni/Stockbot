@@ -19,7 +19,8 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import pandas as pd
 from sqlalchemy import select, delete, insert, update, text
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, DateTime
+from models import (engine, posts, users, success_stories, 
+                      rankings_cache, trade_logs)
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
 import io
