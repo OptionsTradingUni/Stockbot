@@ -1330,7 +1330,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📊 Full Rankings", callback_data="rankings"),
          InlineKeyboardButton("📖 Success Stories", callback_data=f"success_any_{random_index}")],
         [InlineKeyboardButton("📢 Join Profit Group", url="https://t.me/+v2cZ4q1DXNdkMjI8")],
-        [InlineKeyboardButton("🌐 Visit Website", url=WEBSITE_URL),
+        [InlineKeyboardButton("🌐 Visit Website", url= "https://optionstradinguni.online"),
          InlineKeyboardButton("📜 Terms", callback_data="terms")],
         [InlineKeyboardButton("🔒 Privacy", callback_data="privacy")]
     ]
