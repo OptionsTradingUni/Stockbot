@@ -52,7 +52,7 @@ CRYPTO_ID_MAP = {
     "DOT": "polkadot",
     "XRP": "ripple",
     "ADA": "cardano",
-    "SUI": "sui"
+    "SUI": "sui",
     "AVAX": "avalanche-2",
     "MATIC": "matic-network",
     "XLM": "stellar", # <-- ADDED
