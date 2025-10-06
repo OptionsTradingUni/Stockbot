@@ -1000,7 +1000,7 @@ async def profit_posting_loop(app):
                         # too small → switch to simulated but don't skip
                         logger.info(f"{symbol} real change too small ({pct_change_24h:+.2f}%), using simulated.")
                         deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                        post_title = f"🎯 <b>{symbol} Simulated Flex (Low Volatility)</b>"
+                        post_title = f"🎯 <b>{symbol} 💹 Live Market Report”</b>"
                         break
                     else:
                         # good real data
@@ -1009,7 +1009,7 @@ async def profit_posting_loop(app):
                         profit = deposit * (roi / 100.0)
                         reason = f"Capitalized on {pct_change_24h:+.2f}% 24h market move!"
                         trading_style = "Market Analysis"
-                        post_title = f"📈 <b>{symbol} Real Market Flex</b>"
+                        post_title = f"📈 <b>{symbol} 💹 Live Market Report”</b>"
                         break
             else:
                 logger.warning("All attempts failed, skipping this cycle.")
@@ -1105,7 +1105,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 if abs(pct_change_24h) < 0.5:
                     logger.info(f"{symbol} low change ({pct_change_24h:+.2f}%), using simulated.")
                     deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                    post_title = f"🎯 <b>{symbol} Simulated Flex (Manual)</b>"
+                    post_title = f"🎯 <b>{symbol} 💹 Live Market Report”</b>"
                     break
                 else:
                     deposit = random.randint(500, 5000)
@@ -1113,7 +1113,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     profit = deposit * (roi / 100.0)
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                     trading_style = "Market Analysis"
-                    post_title = f"📈 <b>{symbol} Real Market Flex (Manual)</b>"
+                    post_title = f"📈 <b>{symbol} 💹 Live Market Report”</b>"
                     break
         else:
             await update.message.reply_text("⚠️ Could not fetch any valid symbol after multiple tries.")
