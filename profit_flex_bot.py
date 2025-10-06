@@ -66,6 +66,25 @@ CRYPTO_ID_MAP = {
     "FLOKI": "floki"
 }
 
+# import this to access metadata
+
+def init_traders_if_needed():
+    """Ensure traders table has at least basic sample users after reset."""
+    from models import users
+    with engine.begin() as conn:
+        existing = conn.execute(select(users)).fetchall()
+        if not existing:
+            for _, name in random.sample(RANKING_TRADERS, 10):
+                conn.execute(users.insert().values(
+                    user_id=str(random.randint(1000,9999)),
+                    username=name.lower().replace(" ", "_"),
+                    display_name=name,
+                    wins=0,
+                    total_trades=0,
+                    total_profit=0
+                ))
+    logger.info("✅ Traders initialized successfully.")
+
 def save_trade_log(txid, symbol, trader_name, deposit, profit, roi, strategy, reason):
     """Save each posted trade to the database for /log/<txid> web route."""
     try:
