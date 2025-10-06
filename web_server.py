@@ -1,33 +1,38 @@
 import os
 import logging
-from flask import Flask, render_template, abort
-from sqlalchemy import select
+from flask import Flask, render_template, jsonify
+from sqlalchemy import select, text   # ✅ Added text import
 from dotenv import load_dotenv
+from datetime import datetime, timezone  # ✅ Added datetime import
 
-# Try to import the database models
+# Try to import database models
 try:
     from models import engine, trade_logs
 except Exception as e:
-    # This will log the error if the models file has an issue
     logging.critical(f"Failed to import from models.py: {e}")
     raise
 
-# Configure basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# --- Configure logging globally ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)  # ✅ Define logger properly
 
 logging.info("Web server script starting up...")
 
-# Load environment variables
+# --- Load environment ---
 load_dotenv()
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    """A simple route to confirm the web server is running and for health checks."""
-    logging.info("Root URL '/' was hit successfully.")
+    """Health check route."""
+    logger.info("Root URL '/' was hit successfully.")
     return "✅ Web Server is running and accessible."
 
+# ✅ /api/recent — returns JSON of last 40 trades
 @app.route("/api/recent")
 def recent_trade_logs():
     """Return up to 40 most recent trades as JSON."""
@@ -57,8 +62,9 @@ def recent_trade_logs():
                 "roi": float(row["roi"] or 0),
                 "posted_at": (
                     row["posted_at"].isoformat()
-                    if row["posted_at"] else datetime.now(timezone.utc).isoformat()
-                )
+                    if row["posted_at"]
+                    else datetime.now(timezone.utc).isoformat()
+                ),
             })
 
         return jsonify(data), 200
@@ -69,18 +75,18 @@ def recent_trade_logs():
         logger.error(f"⚠️ Error fetching /api/recent: {e}")
         return jsonify({"error": str(e)}), 500
 
-
+# ✅ /log/<txid> — individual trade viewer
 @app.route('/log/<txid>')
 def show_log(txid):
     """Display verification details for a specific trade."""
-    logging.info(f"Log for txid '{txid}' was requested.")
+    logger.info(f"Log for txid '{txid}' was requested.")
     try:
         with engine.connect() as conn:
             stmt = select(trade_logs).where(trade_logs.c.txid == txid)
             result = conn.execute(stmt).fetchone()
         
         if not result:
-            logging.warning(f"TXID '{txid}' not found in the database.")
+            logger.warning(f"TXID '{txid}' not found in the database.")
             return (
                 "<h2>⚠️ Trade Snapshot Not Found</h2>"
                 "<p>This transaction ID may have expired or hasn't been posted yet.</p>"
@@ -92,7 +98,7 @@ def show_log(txid):
         return render_template('log_template.html', trade=trade_data)
     
     except Exception as e:
-        logging.error(f"Error while fetching log for {txid}: {e}", exc_info=True)
+        logger.error(f"Error while fetching log for {txid}: {e}", exc_info=True)
         return (
             "<h2>500 - Internal Server Error</h2>"
             "<p>An error occurred. Please check logs for details.</p>"
@@ -100,6 +106,7 @@ def show_log(txid):
             500,
         )
 
+# ✅ Error handlers
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
@@ -108,4 +115,4 @@ def page_not_found(e):
 def server_error(e):
     return "<h1>500 - Internal Server Error</h1><p>An error occurred. Please check the application logs for details.</p>", 500
 
-logging.info("Web server setup is complete. Gunicorn will now manage the application.")
+logger.info("Web server setup is complete. Gunicorn will now manage the application.")
