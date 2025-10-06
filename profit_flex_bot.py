@@ -1211,6 +1211,22 @@ def short_highlight(symbol: str, profit: float, roi: float) -> str:
 ADMIN_ID = os.getenv("ADMIN_ID")
 
 # ===============================
+# 🔧 Profit/Loss Label Helper
+# ===============================
+def profit_status_labels(profit: float):
+    """
+    Returns emoji and label depending on profit sign.
+    Example:
+        +500 -> ("✅", "Profit")
+        -200 -> ("❌", "Loss")
+    """
+    if profit >= 0:
+        return "✅", "Profit"
+    else:
+        return "❌", "Loss"
+      
+
+# ===============================
 # AUTO PROFIT POSTING LOOP (REAL + SIMULATED FIX)
 # ===============================
 async def profit_posting_loop(app):
@@ -1270,11 +1286,13 @@ async def profit_posting_loop(app):
                 quantity=quantity, commission=commission, slippage=slippage, direction=direction
             )
 
+                status_emoji, profit_label = profit_status_labels(profit)
+
             msg = (
                 f"{post_title}\n"
                 f"👤 Trader: <b>{trader_name}</b>\n"
                 f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
-                f"✅ <b>Profit:</b> <b>${abs(profit):,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+                f"f"{status_emoji} <b>{profit_label}:</b> ":</b> <b>${abs(profit):,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
                 f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
                 f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
                 f"🔥 Strategy: <b>{trading_style}</b> — {reason}\n\n"
@@ -1355,12 +1373,13 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             reason=reason, entry_price=entry_price, exit_price=exit_price,
             quantity=quantity, commission=commission, slippage=slippage, direction=direction
         )
+            status_emoji, profit_label = profit_status_labels(profit)
 
         msg = (
             f"{post_title}\n"
             f"👤 Trader: <b>{trader_name}</b>\n"
             f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
-            f"✅ <b>Profit:</b> <b>${abs(profit):,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+            f"f"{status_emoji} <b>{profit_label}:</b> ":</b> <b>${abs(profit):,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
             f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
             f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
             f"🔥 Strategy: <b>{trading_style}</b> — {reason}\n\n"
