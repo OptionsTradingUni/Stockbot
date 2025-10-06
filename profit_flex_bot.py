@@ -43,7 +43,7 @@ from pycoingecko import CoinGeckoAPI
 cg = CoinGeckoAPI()
 # Map common symbols to CoinGecko API IDs
 # In profit_flex_bot.py
-all_symbols = ALL_SYMBOLS
+
 
 CRYPTO_ID_MAP = {
     # Main Crypto
