@@ -42,9 +42,27 @@ from pycoingecko import CoinGeckoAPI
 # --- NEW: Market Data Fetcher ---
 cg = CoinGeckoAPI()
 # Map common symbols to CoinGecko API IDs
+# In profit_flex_bot.py
+
 CRYPTO_ID_MAP = {
-    "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
-    "PEPE": "pepe", "WIF": "dogwifhat", "BONK": "bonk"
+    # Main Crypto
+    "BTC": "bitcoin", 
+    "ETH": "ethereum", 
+    "SOL": "solana",
+    "DOT": "polkadot",
+    "XRP": "ripple",
+    "ADA": "cardano",
+    "AVAX": "avalanche-2",
+    "MATIC": "matic-network",
+    "XLM": "stellar", # <-- ADDED
+    
+    # Meme Coins
+    "DOGE": "dogecoin", # <-- ADDED
+    "SHIB": "shiba-inu",
+    "PEPE": "pepe", 
+    "WIF": "dogwifhat", 
+    "BONK": "bonk",
+    "FLOKI": "floki"
 }
 
 def get_market_data(symbol):
