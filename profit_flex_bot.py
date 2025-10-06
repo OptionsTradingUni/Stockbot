@@ -43,6 +43,7 @@ from pycoingecko import CoinGeckoAPI
 cg = CoinGeckoAPI()
 # Map common symbols to CoinGecko API IDs
 # In profit_flex_bot.py
+all_symbols = ALL_SYMBOLS
 
 CRYPTO_ID_MAP = {
     # Main Crypto
@@ -1126,7 +1127,7 @@ async def profit_posting_loop(app):
     while True:
         try:
             # Pick a random symbol from all categories
-            symbol = random.choice(all_symbols)
+            symbol = random.choice(ALL_SYMBOLS)
             use_simulated = random.random() < 0.7  # 70% simulated, 30% real
             trader = random.choice(verified_traders)
             broker_name = random.choice(BROKERS)
@@ -1165,7 +1166,7 @@ async def profit_posting_loop(app):
                     post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                     break
 
-                symbol = random.choice(all_symbols)
+                symbol = random.choice(ALL_SYMBOLS)
             else:
                 logger.warning("All attempts failed — retrying soon.")
                 await asyncio.sleep(10)
@@ -1231,7 +1232,7 @@ async def profit_posting_loop(app):
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Manual trigger to post a single trade."""
     try:
-        symbol = random.choice(all_symbols)
+        symbol = random.choice(ALL_SYMBOLS)
         use_simulated = random.random() < 0.7  # 70% simulated
         trader = random.choice(verified_traders)
         broker_name = random.choice(BROKERS)
@@ -1270,7 +1271,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                 break
 
-            symbol = random.choice(all_symbols)
+            symbol = random.choice(ALL_SYMBOLS)
         else:
             await update.message.reply_text("⚠️ Could not fetch valid symbol after multiple tries.")
             return
