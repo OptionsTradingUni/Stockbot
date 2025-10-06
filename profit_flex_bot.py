@@ -693,68 +693,90 @@ def fetch_cached_rankings():
 
 def save_rankings(parsed):
     """
-    Save top 10 traders to DB with medals and return formatted lines.
-    Always overwrite numbering so no duplicates like '4. 9.' appear.
+    Save top 10 traders to DB with medals, consistent formatting,
+    and clean numeric display (no floats or weird decimals).
     """
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     lines = []
-    for i, (name, total) in enumerate(parsed, start=1):
-        badge = medals.get(i, f"{i}.")   # force clean numbering
-        lines.append(f"{badge} {name} — ${total:,} profit")
 
+    for i, (name, total) in enumerate(parsed, start=1):
+        # Ensure integer display with comma separation
+        clean_total = int(round(total))
+        badge = medals.get(i, f"{i}.")
+        lines.append(f"{badge} {name} — ${clean_total:,} profit")
+
+    # ✅ Always overwrite the previous cache
     with engine.begin() as conn:
         conn.execute(delete(rankings_cache))
         conn.execute(insert(rankings_cache).values(
             content="\n".join(lines),
             timestamp=datetime.now(timezone.utc)
         ))
+
+    logger.info("🏆 Leaderboard saved successfully.")
     return lines
 
 
 def update_rankings_with_new_profit(trader_name, new_profit):
     """
     Update leaderboard cumulative totals.
-    Ensures numbering and medals are fully reset each time.
+    Ensures numbering, medals, and rounding are consistent.
     """
     parsed = fetch_cached_rankings()
-
     clean = []
+
+    # 🧹 Parse the existing rankings cleanly
     for line in parsed:
         try:
-            # Strip all emojis, medals, and numbering completely
+            # Remove medals, numbers, and emojis
             raw = line.split("—")[0].strip()
             raw = raw.replace("🥇", "").replace("🥈", "").replace("🥉", "")
-            raw = "".join([c for c in raw if not c.isdigit() and c not in "."])  # strip stray numbers and dots
+            raw = "".join([c for c in raw if not c.isdigit() and c not in "."])  # strip stray dots or digits
             name = raw.strip()
 
-            profit = int(line.split("$")[-1].split()[0].replace(",", ""))
+            # Extract numeric part safely
+            profit_str = line.split("$")[-1].split()[0].replace(",", "")
+            profit = int(float(profit_str))
             clean.append((name, profit))
         except:
             continue
 
-    # If empty, seed new board
+    # 🧩 If no valid data, seed a fresh board
     if not clean:
         selected = random.sample(RANKING_TRADERS, 10)
         clean = [(name, random.randint(2000, 8000)) for _, name in selected]
 
-    # Update or add trader
+    # 🧮 Update or add trader (rounded to nearest whole number)
     found = False
     for i, (name, total) in enumerate(clean):
         if name == trader_name:
-            clean[i] = (trader_name, total + new_profit)
+            clean[i] = (trader_name, round(total + new_profit))
             found = True
             break
     if not found:
-        clean.append((trader_name, new_profit))
+        clean.append((trader_name, round(new_profit)))
 
-    # Sort & keep top 10
+    # 🏆 Sort and keep top 10
     clean.sort(key=lambda x: x[1], reverse=True)
     clean = clean[:10]
 
-    # Save back with **fresh numbering**
-    lines = save_rankings(clean)
+    # 🥇 Format output cleanly
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines = []
+    for i, (name, total) in enumerate(clean, start=1):
+        badge = medals.get(i, f"{i}.")
+        # 👇 Always show as integer dollars
+        lines.append(f"{badge} {name} — ${int(total):,} profit")
 
-    # Get position
+    # 💾 Save updated rankings to DB
+    with engine.begin() as conn:
+        conn.execute(delete(rankings_cache))
+        conn.execute(insert(rankings_cache).values(
+            content="\n".join(lines),
+            timestamp=datetime.now(timezone.utc)
+        ))
+
+    # 🎯 Return leaderboard + trader’s position
     pos = None
     for i, (name, _) in enumerate(clean, start=1):
         if name == trader_name:
