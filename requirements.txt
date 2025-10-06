@@ -8,3 +8,19 @@ matplotlib>=3.8
 Pillow>=10.0
 requests==2.32.3
 loguru==0.7.2
+
+# Web app backend
+fastapi
+uvicorn
+jinja2
+Flask
+gunicorn
+
+# Data and API requests
+requests
+yfinance
+pycoingecko
+
+# Optional (safety & encoding)
+aiohttp
+certifi
