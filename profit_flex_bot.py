@@ -66,26 +66,39 @@ CRYPTO_ID_MAP = {
 }
 
 def get_market_data(symbol):
-    """Fetches real-time price data for a given symbol."""
-    symbol = symbol.upper()
+    """
+    Fetches real data for known assets, or signals to generate fake data for custom coins.
+    Returns: Tuple (current_price, price_24h_ago, % change), 'generate_fake', or None.
+    """
+    symbol_upper = symbol.upper()
+    logger.info(f"Processing market data for {symbol_upper}...")
     try:
-        if symbol in STOCK_SYMBOLS:
-            stock = yf.Ticker(symbol)
-            hist = stock.history(period="1d")
-            if not hist.empty:
-                return hist['Close'].iloc[-1]
-        elif symbol in CRYPTO_SYMBOLS or symbol in MEME_COINS:
-            api_id = CRYPTO_ID_MAP.get(symbol)
-            if api_id:
-                price_data = cg.get_price(ids=api_id, vs_currencies='usd')
-                return price_data[api_id]['usd']
+        if symbol_upper in STOCK_SYMBOLS:
+            stock = yf.Ticker(symbol_upper)
+            hist = stock.history(period="2d")
+            if len(hist) < 2: return None
+            current_price = hist['Close'].iloc[-1]
+            price_24h_ago = hist['Close'].iloc[-2]
+            if price_24h_ago == 0: return None
+            percent_change = ((current_price - price_24h_ago) / price_24h_ago) * 100
+            return (current_price, price_24h_ago, percent_change)
+        elif symbol_upper in CRYPTO_SYMBOLS or symbol_upper in MEME_COINS:
+            api_id = CRYPTO_ID_MAP.get(symbol_upper)
+            if not api_id:
+                if symbol_upper in MEME_COINS:
+                    logger.info(f"'{symbol_upper}' is a custom meme coin. Signaling to generate FAKE data.")
+                    return 'generate_fake'
+                return None
+            coin_data = cg.get_coin_by_id(id=api_id, market_data='true', sparkline='false', tickers='false', community_data='false', developer_data='false')
+            market_data = coin_data.get('market_data', {})
+            current_price = market_data.get('current_price', {}).get('usd')
+            percent_change = market_data.get('price_change_percentage_24h')
+            if current_price is not None and percent_change is not None:
+                price_24h_ago = current_price / (1 + (percent_change / 100.0))
+                return (current_price, price_24h_ago, percent_change)
     except Exception as e:
-        logger.warning(f"Could not fetch real price for {symbol}: {e}")
-    
-    # Fallback for unknown meme coins or API failures
-    if symbol == "NIKY":
-        return random.uniform(0.00005, 0.00015)
-    return None # Indicates failure
+        logger.error(f"API error for {symbol_upper}: {e}", exc_info=False)
+    return None
 
 
 
@@ -406,54 +419,85 @@ def fetch_recent_profits():
         return set()
 
 # Helper: Generate profit scenario with realistic gains
+import numpy as np # Make sure 'import numpy as np' is at the top of your script
+
 def generate_profit_scenario(symbol):
     """
-    Generate realistic profit scenario with capped bands:
-    - Meme coins:
-        • Common: $1k–$10k
-        • Less common: $10k–$20k
-        • Rare flex: up to $70k (very low chance)
-    - Stocks/Crypto:
-        • Common: $500–$5k
-        • Less common: $5k–$8k
-        • Rare whale: up to $55k (very low chance)
+    Generates a balanced and authentic profit scenario using a distribution
+    that makes average outcomes common and extreme outcomes rare.
     """
-
-    # --- Meme coins ---
+    # --- Step 1: Define parameters for different asset types ---
     if symbol in MEME_COINS:
-        r = random.random()
-        if r < 0.75:    # 75% common
-            profit = random.randint(1000, 10000)
-        elif r < 0.95:  # 20% less common
-            profit = random.randint(10000, 20000)
-        else:           # 5% rare moonshot
-            profit = random.randint(20000, 70000)
+        # For memes: Higher average returns, wider spread of possibilities
+        deposit = random.randint(100, 1500)
+        avg_multiplier = 3.5  # Avg 250% ROI
+        spread = 1.5
+    else:  # Stocks & Regular Crypto
+        # For stocks/crypto: More conservative returns, tighter spread
+        deposit = random.randint(500, 7500)
+        avg_multiplier = 1.5  # Avg 50% ROI
+        spread = 0.4
 
-    # --- Stocks & Crypto ---
-    else:
-        r = random.random()
-        if r < 0.75:    # 75% common
-            profit = random.randint(500, 5000)
-        elif r < 0.95:  # 20% less common
-            profit = random.randint(5000, 8000)
-        else:           # 5% rare whale
-            profit = random.randint(8000, 55000)
+    # --- Step 2: Generate a multiplier from a natural distribution ---
+    multiplier = max(1.1, np.random.normal(loc=avg_multiplier, scale=spread))
 
-    # Back-calc deposit & ROI so it looks consistent
-    multiplier = random.uniform(2, 6)  # moderate leverage range
-    deposit = max(100, int(profit / multiplier))
-    roi = round((profit / deposit - 1) * 100, 1)
+    # --- Step 3: Calculate the final numbers ---
+    profit = deposit * (multiplier - 1)
+    roi = (multiplier - 1) * 100
 
-    # Trading style & reason
+    # --- Step 4: Generate a trading style and a varied reason ---
     if symbol in STOCK_SYMBOLS:
-        trading_style = random.choice(["Scalping", "Day Trade", "Swing Trade", "Position"])
-        reason = f"{symbol} {trading_style} setup worked perfectly!"
+        trading_style = random.choice([
+            "Scalping", "Day Trading", "Swing Trading", "Position Trade",
+            "Momentum Trading", "Breakout Trading", "Mean Reversion",
+            "Value Investing", "Growth Investing", "Earnings Play", "Arbitrage"
+        ])
+        reasons = [
+            f"Nailed the entry on this {symbol} {trading_style} setup!",
+            f"This {symbol} breakout trade followed the plan perfectly.",
+            f"A solid technical analysis read on the {symbol} chart.",
+            f"Fading the market weakness on {symbol} paid off.",
+            f"Caught the momentum swing on this {symbol} trade.",
+            f"The earnings catalyst provided the perfect {symbol} run-up.",
+            f"Market structure shifted bullishly for {symbol}, had to take the trade.",
+            f"Played the volatility contraction on {symbol} like a textbook.",
+            f"This {symbol} gap-fill strategy was a clean win.",
+        ]
+        reason = random.choice(reasons)
+
     elif symbol in CRYPTO_SYMBOLS:
-        trading_style = random.choice(["HODL", "Swing Trade", "Leverage", "Arbitrage"])
-        reason = f"{symbol} {trading_style} breakout gave solid returns!"
-    else:
-        trading_style = random.choice(["Pump Riding", "Community Flip", "Early Sniping"])
-        reason = f"{symbol} {trading_style} run delivered massive gains!"
+        trading_style = random.choice([
+            "Swing Trading", "HODLing", "Leverage Play", "DCA Strategy",
+            "Yield Farming", "Arbitrage", "On-Chain Analysis", "Futures Trade"
+        ])
+        reasons = [
+            f"This {symbol} accumulation phase led to a massive breakout.",
+            f"Altcoin season gave this {symbol} trade the legs it needed.",
+            f"Perfectly timed the {symbol} dip, a classic buy-the-fear moment.",
+            f"On-chain data signaled a bullish move for {symbol}.",
+            f"Riding the {symbol} narrative was highly profitable.",
+            f"The funding rate for {symbol} presented a clear opportunity.",
+            f"Spotted a liquidity grab on the {symbol} chart and took the trade.",
+            f"This {symbol} protocol upgrade was the catalyst we were waiting for.",
+        ]
+        reason = random.choice(reasons)
+        
+    else:  # Meme Coins
+        trading_style = random.choice([
+            "Community Flip", "Pump Ride", "Sniping", "Ape-in",
+            "Degen Play", "Diamond Handing", "Micro-Cap Gem Hunt"
+        ])
+        reasons = [
+            f"Got in on the ground floor of the {symbol} hype cycle.",
+            f"The community power behind {symbol} is unstoppable!",
+            f"This {symbol} degen play turned out to be a massive win.",
+            f"Sniped the {symbol} launch before the crowd rushed in.",
+            f"Faded the FUD and caught the {symbol} mega-pump.",
+            f"A key influencer mention sent {symbol} to the moon.",
+            f"The tokenomics of {symbol} were too good to ignore.",
+            f"This was a classic high-risk, high-reward {symbol} trade.",
+        ]
+        reason = random.choice(reasons)
 
     return deposit, profit, roi, reason, trading_style
 
@@ -899,102 +943,65 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 # AUTO PROFIT POSTING LOOP (UPDATED)
 # ===============================
 async def profit_posting_loop(app):
-    global last_category
-    logger.info("Profit posting task started.")
-
+    logger.info("Profit posting task started with REALITY vs. SIMULATED logic.")
     while True:
         try:
-            wait_minutes = random.randint(20, 40)
-            await asyncio.sleep(wait_minutes * 60)
-
-            # ... (Category and symbol selection logic remains the same) ...
+            await asyncio.sleep(random.randint(20, 40) * 60)
             r = random.random()
-            # ... choose category and symbol ...
+            if r < 0.50: symbol = random.choice(STOCK_SYMBOLS)
+            elif r < 0.90: symbol = random.choice(MEME_COINS)
+            else: symbol = random.choice(CRYPTO_SYMBOLS)
 
-            # --- CORE LOGIC UPDATE ---
-
-            # 1. Generate core profit scenario
-            deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-            trader_id, trader_name = random.choice(RANKING_TRADERS)
-            
-            # 2. Generate a unique TXID for the log
-            txid = generate_unique_txid(engine)
-
-            # 3. Get verification text AND the broker name
-            verification_text, broker_name = get_random_verification(symbol, txid, engine)
-
-            # 4. Fetch real market price to make simulation realistic
-            current_price = get_market_data(symbol)
-            if current_price is None:
-                logger.warning(f"Skipping post for {symbol} due to price fetch failure.")
+            market_data = get_market_data(symbol)
+            if market_data is None:
+                logger.warning(f"Skipping post for {symbol}, failed to get data.")
                 continue
-            
-            # 5. Simulate detailed trade metrics based on the generated profit
-            exit_price = current_price * random.uniform(0.998, 1.002) # Simulate slight price variation
-            total_value_exit = deposit + profit
-            quantity = total_value_exit / exit_price
-            entry_price = deposit / quantity
-            commission = total_value_exit * random.uniform(0.0005, 0.0015) # 0.05% - 0.15% fee
-            slippage = random.uniform(0.01, 0.08) # Slippage percentage
 
-            # 6. Save the detailed log to the database
-            with engine.begin() as conn:
-                stmt = insert(trade_logs).values(
-                    txid=txid,
-                    symbol=symbol,
-                    trader_name=trader_name,
-                    broker_name=broker_name,
-                    quantity=quantity,
-                    deposit=deposit,
-                    profit=profit,
-                    entry_price=entry_price,
-                    exit_price=exit_price,
-                    total_value_exit=total_value_exit,
-                    commission=commission,
-                    slippage=slippage
-                )
-                conn.execute(stmt)
+            elif market_data == 'generate_fake':
+                deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                entry_price = random.uniform(0.00001, 0.005)
+                exit_price = entry_price * (1 + (roi / 100.0))
+                quantity = deposit / entry_price if entry_price > 0 else 0
+                post_title = f"🚀 <b>{symbol} Custom Meme Flex</b>"
+            else:
+                if random.random() < 0.5: # REALITY post
+                    exit_price_val, entry_price_val, pct_change_24h = market_data
+                    if pct_change_24h < 1.0:
+                        logger.info(f"Skipping REALITY post for {symbol}, change is too small.")
+                        continue
+                    deposit, roi = random.randint(500, 5000), pct_change_24h
+                    profit = deposit * (roi / 100.0)
+                    quantity = deposit / entry_price_val if entry_price_val > 0 else 0
+                    entry_price, exit_price = entry_price_val, exit_price_val
+                    reason = f"Capitalized on the 24h market move of {pct_change_24h:+.2f}%!"
+                    trading_style = "Market Analysis"
+                    post_title = f"📈 <b>{symbol} Real Market Flex</b>"
+                else: # SIMULATED post
+                    deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                    entry_price = random.uniform(20.0, 200.0) if symbol in STOCK_SYMBOLS + CRYPTO_SYMBOLS else random.uniform(0.001, 0.1)
+                    exit_price = entry_price * (1 + (roi / 100.0))
+                    quantity = deposit / entry_price if entry_price > 0 else 0
+                    post_title = f"🎯 <b>{symbol} Simulated Flex</b>"
 
-            # 7. Update rankings
+            trader_name = random.choice(RANKING_TRADERS)[1]
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
-
-            # 8. Build the caption with the HYPERLINKED verification
-            website_url = os.getenv("WEBSITE_URL").rstrip('/')
-            log_url = f"{website_url}/log/{txid}"
-            
-            # The final verification line becomes a clickable link
-            verification_link = f'<a href="{log_url}">{verification_text}</a>'
-            
             msg = (
-                f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
+                f"{post_title}\n"
                 f"👤 Trader: <b>{trader_name}</b>\n"
-                f"💰 Started With: <b>${deposit:,}</b>\n"
-                f"💥 Closed At: <b>${profit:,}</b> (+{roi}%)\n"
-                f"⚡ Strategy: <b>{trading_style}</b>\n"
-                f"🔥 {reason}\n\n"
+                f"💰 Deposit: <b>${deposit:,.2f}</b>\n\n"
+                f"➡️ Entry Price: <b>${entry_price:,.4f}</b>\n"
+                f"⬅️ Exit Price: <b>${exit_price:,.4f}</b>\n"
+                f"📦 Quantity: <b>{quantity:,.4f}</b>\n\n"
+                f"✅ Profit: <b>${profit:,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+                f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
                 f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
-                "\n\n━━━━━━━━━━━━━━━\n"
-                f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-                f"{verification_link}\n" # <-- THE NEW HYPERLINK
-                f"🌍 <b>Powered by Options Trading University</b>\n"
+                f"\n\n🌍 <b>Powered by Options Trading University</b>"
             )
-
-            # 9. Generate image and post
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
-
-            await app.bot.send_photo(
-                chat_id=TELEGRAM_CHAT_ID,
-                photo=img_buf,
-                caption=msg,
-                parse_mode=constants.ParseMode.HTML
-            )
-            
-            # ... (rest of the loop, admin notifications, hype messages, etc.) ...
-
+            await app.bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img_buf, caption=msg, parse_mode=constants.ParseMode.HTML)
         except Exception as e:
-            logger.error(f"Error in posting loop: {e}", exc_info=True)
-            if ADMIN_ID:
-                await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
+            logger.error(f"Error in main posting loop: {e}", exc_info=True)
+            if ADMIN_ID: await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
             await asyncio.sleep(60)
 
 # IMPORTANT: You must also apply the same logic from the `profit_posting_loop` (steps 1-9)
@@ -1004,138 +1011,66 @@ async def profit_posting_loop(app):
 # MANUAL POST COMMAND (UPDATED)
 # ===============================
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Manually triggers a profit post with a persistent, hyperlinked broker log.
-    Restricted to the admin user.
-    """
-    global last_category
-    user_id = str(update.effective_user.id)
-
-    # 🔐 Restrict to admin
-    if user_id != str(ADMIN_ID):
-        await update.message.reply_text("🚫 You are not authorized to trigger manual posts.")
+    if str(update.effective_user.id) != str(ADMIN_ID):
+        await update.message.reply_text("🚫 You are not authorized.")
         return
-
-    await update.message.reply_text("⏳ Generating manual profit post, please wait...")
-
+    await update.message.reply_text("⏳ Generating manual post with final logic...")
     try:
-        # 🎯 Category and symbol selection (same logic as the loop)
         r = random.random()
-        if r < 0.5:
-            category = "stock"
-        elif r < 0.9:
-            category = "meme"
-        else:
-            category = "crypto"
+        if r < 0.50: symbol = random.choice(STOCK_SYMBOLS)
+        elif r < 0.90: symbol = random.choice(MEME_COINS)
+        else: symbol = random.choice(CRYPTO_SYMBOLS)
 
-        if category == last_category:
-            category = random.choice(["stock", "meme", "crypto"])
-        last_category = category
-
-        if category == "stock":
-            symbol = random.choice(STOCK_SYMBOLS)
-        elif category == "meme":
-            symbol = random.choice(MEME_COINS)
-        else:
-            symbol = random.choice(CRYPTO_SYMBOLS)
-
-        # --- CORE LOGIC (Mirrors the automatic loop) ---
-
-        # 1. Generate core profit scenario
-        deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-        trader_id, trader_name = random.choice(RANKING_TRADERS)
-
-        # 2. Generate a unique TXID for the log
-        txid = generate_unique_txid(engine)
-
-        # 3. Get verification text AND the broker name
-        verification_text, broker_name = get_random_verification(symbol, txid, engine)
-
-        # 4. Fetch real market price for realism
-        current_price = get_market_data(symbol)
-        if current_price is None:
-            await update.message.reply_text(f"⚠️ Could not fetch market price for {symbol}. Aborting post.")
+        market_data = get_market_data(symbol)
+        if market_data is None:
+            await update.message.reply_text(f"⚠️ Manual post failed. Could not get data for {symbol}.")
             return
-
-        # 5. Simulate detailed trade metrics
-        exit_price = current_price * random.uniform(0.998, 1.002)
-        total_value_exit = deposit + profit
-        quantity = total_value_exit / exit_price
-        entry_price = deposit / quantity
-        commission = total_value_exit * random.uniform(0.0005, 0.0015)
-        slippage = random.uniform(0.01, 0.08)
-
-        # 6. Save the detailed log to the database
-        with engine.begin() as conn:
-            stmt = insert(trade_logs).values(
-                txid=txid,
-                symbol=symbol,
-                trader_name=trader_name,
-                broker_name=broker_name,
-                quantity=quantity,
-                deposit=deposit,
-                profit=profit,
-                entry_price=entry_price,
-                exit_price=exit_price,
-                total_value_exit=total_value_exit,
-                commission=commission,
-                slippage=slippage
-            )
-            conn.execute(stmt)
-
-        # 7. Update rankings
-        rankings, pos = update_rankings_with_new_profit(trader_name, profit)
-
-        # 8. Build the caption with the HYPERLINKED verification
-        website_url = os.getenv("WEBSITE_URL", "").rstrip('/')
-        if not website_url:
-             await update.message.reply_text("⚠️ WEBSITE_URL is not set in .env! Cannot create log link.")
-             return
+        elif market_data == 'generate_fake':
+            deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+            entry_price = random.uniform(0.00001, 0.005)
+            exit_price = entry_price * (1 + (roi / 100.0))
+            quantity = deposit / entry_price if entry_price > 0 else 0
+            post_title = f"🚀 <b>{symbol} Custom Meme Flex (Manual)</b>"
+        else:
+            if random.random() < 0.5: # REALITY POST
+                exit_price_val, entry_price_val, pct_change_24h = market_data
+                if pct_change_24h < 0.1:
+                    await update.message.reply_text(f"⚠️ REALITY post aborted for {symbol}, change is too small.")
+                    return
+                deposit, roi = random.randint(500, 5000), pct_change_24h
+                profit = deposit * (roi / 100.0)
+                quantity = deposit / entry_price_val if entry_price_val > 0 else 0
+                entry_price, exit_price = entry_price_val, exit_price_val
+                reason = f"Capitalized on the 24h market move of {pct_change_24h:+.2f}%!"
+                trading_style = "Market Analysis"
+                post_title = f"📈 <b>{symbol} Real Market Flex (Manual)</b>"
+            else: # SIMULATED POST
+                deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                entry_price = random.uniform(20.0, 200.0) if symbol in STOCK_SYMBOLS + CRYPTO_SYMBOLS else random.uniform(0.001, 0.1)
+                exit_price = entry_price * (1 + (roi / 100.0))
+                quantity = deposit / entry_price if entry_price > 0 else 0
+                post_title = f"🎯 <b>{symbol} Simulated Flex (Manual)</b>"
         
-        log_url = f"{website_url}/log/{txid}"
-        verification_link = f'<a href="{log_url}">{verification_text}</a>'
-
+        trader_name = random.choice(RANKING_TRADERS)[1]
+        rankings, pos = update_rankings_with_new_profit(trader_name, profit)
         msg = (
-            f"🚀 <b>{symbol} Profit Flex Drop</b>\n"
+            f"{post_title}\n"
             f"👤 Trader: <b>{trader_name}</b>\n"
-            f"💰 Started With: <b>${deposit:,}</b>\n"
-            f"💥 Closed At: <b>${profit:,}</b> (+{roi}%)\n"
-            f"⚡ Strategy: <b>{trading_style}</b>\n"
-            f"🔥 {reason}\n\n"
+            f"💰 Deposit: <b>${deposit:,.2f}</b>\n\n"
+            f"➡️ Entry Price: <b>${entry_price:,.4f}</b>\n"
+            f"⬅️ Exit Price: <b>${exit_price:,.4f}</b>\n"
+            f"📦 Quantity: <b>{quantity:,.4f}</b>\n\n"
+            f"✅ Profit: <b>${profit:,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+            f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
             f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) +
-            "\n\n━━━━━━━━━━━━━━━\n"
-            f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-            f"{verification_link}\n"
-            f"🌍 <b>Powered by Options Trading University</b>\n"
+            f"\n\n🌍 <b>Powered by Options Trading University</b>"
         )
-
-        # 9. Generate image and post to the main channel
         img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
-
-        await context.bot.send_photo(
-            chat_id=TELEGRAM_CHAT_ID,
-            photo=img_buf,
-            caption=msg,
-            parse_mode=constants.ParseMode.HTML
-        )
-
-        # 10. Confirm success to the admin who issued the command
-        await update.message.reply_text(f"✅ Manual profit update for {symbol} posted successfully!\nLog URL: {log_url}")
-
-        # 11. Optional hype message for leaderboard changes
-        if pos:
-            hype = None
-            if pos == 1:
-                hype = f"🚀 {trader_name} just TOOK the #1 spot with a manual drop of ${profit:,}! Legendary!"
-            elif pos <= 3:
-                hype = f"🔥 {trader_name} just broke into the Top 3 with ${profit:,}!"
-            
-            if hype:
-                await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=hype)
-
+        await context.bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img_buf, caption=msg, parse_mode=constants.ParseMode.HTML)
+        await update.message.reply_text(f"✅ Manual post for {symbol} sent successfully!")
     except Exception as e:
         logger.error(f"Error in manual_post_handler: {e}", exc_info=True)
-        await update.message.reply_text(f"❌ An error occurred during manual post: {e}")
+        await update.message.reply_text(f"❌ An error occurred: {e}")
 
 
 # /start handler with Top 3 Rankings
