@@ -29,17 +29,34 @@ def home():
     return "✅ Web Server is running and accessible."
 
 @app.route("/api/recent")
-def recent_logs():
-    with engine.connect() as conn:
-        result = conn.execute(text("""
-            SELECT txid, symbol, trader_name, profit, roi, broker_name, posted_at
-            FROM trade_logs
-            ORDER BY posted_at DESC
-            LIMIT 30
-        """))
-        logs = [dict(row._mapping) for row in result]
-    return jsonify(logs)
+def recent_trade_logs():
+    """
+    Returns the 30–40 most recent trades as JSON for the website widget.
+    Used by the <script> in logs_template.html or index.html.
+    """
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT
+                    txid,
+                    symbol,
+                    broker_name,
+                    trader_name,
+                    profit,
+                    roi,
+                    posted_at
+                FROM trade_logs
+                ORDER BY posted_at DESC
+                LIMIT 40
+            """)).mappings().all()
 
+        logs = [dict(row) for row in result]
+        return jsonify(logs)
+
+    except Exception as e:
+        logger.error(f"⚠️ Error fetching recent logs: {e}", exc_info=True)
+        return jsonify({"error": "Unable to fetch logs"}), 500
+        
 @app.route('/log/<txid>')
 def show_log(txid):
     """Display verification details for a specific trade."""
