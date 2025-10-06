@@ -83,7 +83,7 @@ def save_trade_log(txid, symbol, trader_name, deposit, profit, roi, strategy, re
                     posted_at=datetime.now(timezone.utc)
                 )
             )
-        logger.info(f"✅ Saved trade log {txid} ({symbol}) to database.")
+        logger.info(f"✅ Trade saved: {txid} | {symbol} | {profit:+.2f} | {roi:+.2f}%")
     except Exception as e:
         logger.error(f"⚠️ Failed to save trade log {txid}: {e}")
 
