@@ -129,6 +129,19 @@ def generate_entry_exit(symbol, roi):
         entry = round(random.uniform(20, 1000), 2)
         exit = round(entry * (1 + roi / 100.0), 2)
         return entry, exit
+
+def pick_broker_for_symbol(symbol):
+    """Return a realistic broker/exchange name depending on symbol type."""
+    s = symbol.upper()
+    if s in STOCK_SYMBOLS:
+        return random.choice(["Robinhood", "Webull", "E*TRADE", "Charles Schwab", "Fidelity"])
+    elif s in CRYPTO_SYMBOLS:
+        return random.choice(["Binance", "Coinbase", "Kraken", "Bybit", "OKX", "Bitget"])
+    elif s in MEME_COINS:
+        return random.choice(["Uniswap", "Raydium", "PancakeSwap", "Jupiter", "DEXTools"])
+    else:
+        return "Verified Exchange"
+      
       
 def init_traders_if_needed():
     """Ensure traders table has at least basic sample users after reset."""
@@ -1130,7 +1143,7 @@ async def profit_posting_loop(app):
             symbol = random.choice(ALL_SYMBOLS)
             use_simulated = random.random() < 0.7  # 70% simulated, 30% real
             trader = random.choice(RANKING_TRADERS)
-            broker_name = random.choice(BROKERS)
+            broker_name = pick_broker_for_symbol(symbol)
             timestamp = datetime.now(timezone.utc)
 
             for attempt in range(5):
@@ -1235,7 +1248,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         symbol = random.choice(ALL_SYMBOLS)
         use_simulated = random.random() < 0.7  # 70% simulated
         trader = random.choice(RANKING_TRADERS)
-        broker_name = random.choice(BROKERS)
+        broker_name = pick_broker_for_symbol(symbol)
         timestamp = datetime.now(timezone.utc)
 
         for attempt in range(5):
