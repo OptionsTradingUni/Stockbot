@@ -30,7 +30,7 @@ def home():
 
 @app.route('/log/<txid>')
 def show_log(txid):
-    """Fetches and displays a specific trade log."""
+    """Display verification details for a specific trade."""
     logging.info(f"Log for txid '{txid}' was requested.")
     try:
         with engine.connect() as conn:
@@ -39,14 +39,24 @@ def show_log(txid):
         
         if not result:
             logging.warning(f"TXID '{txid}' not found in the database.")
-            abort(404)
+            return (
+                "<h2>⚠️ Trade Snapshot Not Found</h2>"
+                "<p>This transaction ID may have expired or hasn't been posted yet.</p>"
+                "<p><a href='/'>Return Home</a></p>",
+                404,
+            )
         
         trade_data = dict(result._mapping)
         return render_template('log_template.html', trade=trade_data)
     
     except Exception as e:
-        logging.error(f"A server error occurred while fetching log for {txid}: {e}", exc_info=True)
-        abort(500)
+        logging.error(f"Error while fetching log for {txid}: {e}", exc_info=True)
+        return (
+            "<h2>500 - Internal Server Error</h2>"
+            "<p>An error occurred. Please check logs for details.</p>"
+            "<p><a href='/'>Return Home</a></p>",
+            500,
+        )
 
 @app.errorhandler(404)
 def page_not_found(e):
