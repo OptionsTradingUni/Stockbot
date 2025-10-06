@@ -1145,7 +1145,13 @@ async def profit_posting_loop(app):
                         # ✅ Real post
                         deposit = random.randint(500, 5000)
                         roi = pct_change_24h
-                        profit = deposit * (roi / 100.0)
+                        # --- Profit calculation (handles BUY/SELL + profit/loss correctly) ---
+                        raw_profit = deposit * (roi / 100.0)
+
+                         # For SELL trades, invert ROI logic (negative ROI = profit)
+                 if direction == "SELL":
+                    raw_profit = -raw_profit
+                    profit = round(raw_profit, 2)
                         reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                         trading_style = "Market Analysis"
                         post_title = f"📈 <b>{symbol} Live Market Report</b>"
@@ -1199,11 +1205,14 @@ async def profit_posting_loop(app):
                 f"Trade execution validated via broker statement (TX#{txid})</a>"
             )
 
+             pnl_sign = "✅" if profit > 0 else "❌"
+             pnl_label = "Profit" if profit > 0 else "Loss"
+
             msg = (
                 f"{post_title}\n"
-                f"👤 Trader: <b>{trader_name}</b>\n"
-                f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
-                f"✅ Profit: <b>${profit:,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+                f"👤 Trader: {trader_name}\n"
+                f"💰 Deposit: ${deposit:,.2f}\n"
+                f"{pnl_sign} {pnl_label}: ${abs(profit):,.2f} ({roi:+.2f}%)\n"
                 f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
                 f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
                 f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
@@ -1257,8 +1266,14 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 current_price, price_24h_ago, pct_change_24h = market_data
                 if abs(pct_change_24h) >= 0.5:
                     deposit = random.randint(500, 5000)
-                    roi = pct_change_24h
-                    profit = deposit * (roi / 100.0)
+                        roi = pct_change_24h
+                        # --- Profit calculation (handles BUY/SELL + profit/loss correctly) ---
+                        raw_profit = deposit * (roi / 100.0)
+
+                         # For SELL trades, invert ROI logic (negative ROI = profit)
+                 if direction == "SELL":
+                    raw_profit = -raw_profit
+                    profit = round(raw_profit, 2)
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                     trading_style = "Market Analysis"
                     post_title = f"📈 <b>{symbol} Live Market Report </b>"
@@ -1309,12 +1324,15 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             f'<a href="{log_url}">'
             f"Trade validated via broker ledger (TX#{txid})</a>"
         )
+  
+         pnl_sign = "✅" if profit > 0 else "❌"
+         pnl_label = "Profit" if profit > 0 else "Loss"
 
         msg = (
             f"{post_title}\n"
-            f"👤 Trader: <b>{trader_name}</b>\n"
-            f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
-            f"✅ Profit: <b>${profit:,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+            f"👤 Trader: {trader_name}\n"
+            f"💰 Deposit: ${deposit:,.2f}\n"
+            f"{pnl_sign} {pnl_label}: ${abs(profit):,.2f} ({roi:+.2f}%)\n"
             f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
             f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
             f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
