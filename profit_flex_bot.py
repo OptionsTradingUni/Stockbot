@@ -1213,6 +1213,9 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 # ===============================
 # AUTO PROFIT POSTING LOOP (FINAL VERSION)
 # ===============================
+# ===============================
+# AUTO PROFIT POSTING LOOP (FINAL HYBRID VERSION)
+# ===============================
 async def profit_posting_loop(app):
     logger.info("🚀 Profit posting loop started (70% simulated / 30% real).")
     while True:
@@ -1237,7 +1240,7 @@ async def profit_posting_loop(app):
                         deposit = random.randint(500, 5000)
                         roi = pct_change_24h
                         profit = deposit * (roi / 100.0)
-                        direction = "Bullish" if roi >= 0 else "Bearish"  # ✅ ADD THIS LINE
+                        direction = "Bullish" if roi >= 0 else "Bearish"
                         reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                         trading_style = "Market Analysis"
                         post_title = f"📈 <b>{symbol} Live Market Report</b>"
@@ -1256,10 +1259,22 @@ async def profit_posting_loop(app):
                 await asyncio.sleep(10)
                 continue
 
-            # 📊 Trade metrics
-            entry_price = round(random.uniform(20, 1000), 2)
-            exit_price = round(entry_price * (1 + roi / 100), 2)
-            quantity = round(deposit / entry_price, 6)
+            # 📊 Trade metrics (Hybrid Real + Simulated Entry/Exit)
+            if market_data and market_data != 'generate_fake':
+                live_entry, live_exit = market_data[1], market_data[0]
+                entry_price = round(live_entry * random.uniform(0.999, 1.001), 6)
+                exit_price  = round(live_exit * random.uniform(0.999, 1.001), 6)
+            else:
+                if symbol in MEME_COINS:
+                    base_price = random.uniform(0.0005, 0.05)
+                elif symbol in CRYPTO_SYMBOLS:
+                    base_price = random.uniform(0.2, 300)
+                else:  # stocks
+                    base_price = random.uniform(20, 1200)
+                entry_price = round(base_price, 4)
+                exit_price = round(entry_price * (1 + roi / 100), 4)
+
+            quantity = round(deposit / max(entry_price, 0.0001), 6)
             commission = round(deposit * random.uniform(0.001, 0.003), 2)
             slippage = round(random.uniform(0.01, 0.15), 4)
 
@@ -1337,12 +1352,10 @@ async def profit_posting_loop(app):
                 except:
                     pass
             await asyncio.sleep(60)
-
 # ===============================
-# MANUAL POST COMMAND (FINAL VERSION)
+# MANUAL POST COMMAND (FINAL HYBRID VERSION)
 # ===============================
 async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔐 Only admin can trigger manual posts
     if str(update.effective_user.id) != str(ADMIN_ID):
         await update.message.reply_text("🚫 You are not authorized.")
         return
@@ -1352,7 +1365,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
         symbol = random.choice(all_symbols)
-        use_simulated = random.random() < 0.7  # 70% simulated
+        use_simulated = random.random() < 0.7
 
         for attempt in range(5):
             market_data = get_market_data(symbol)
@@ -1363,7 +1376,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     deposit = random.randint(500, 5000)
                     roi = pct_change_24h
                     profit = deposit * (roi / 100.0)
-                    direction = "Bullish" if roi >= 0 else "Bearish"  # ✅ ADD THIS LINE
+                    direction = "Bullish" if roi >= 0 else "Bearish"
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                     trading_style = "Market Analysis"
                     post_title = f"📈 <b>{symbol} Live Market Report</b>"
@@ -1381,10 +1394,22 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("⚠️ Could not fetch valid symbol after multiple tries.")
             return
 
-        # 🔢 Trade details
-        entry_price = round(random.uniform(20, 1000), 2)
-        exit_price = round(entry_price * (1 + roi / 100), 2)
-        quantity = round(deposit / entry_price, 6)
+        # 📊 Trade metrics (Hybrid Real + Simulated Entry/Exit)
+        if market_data and market_data != 'generate_fake':
+            live_entry, live_exit = market_data[1], market_data[0]
+            entry_price = round(live_entry * random.uniform(0.999, 1.001), 6)
+            exit_price  = round(live_exit * random.uniform(0.999, 1.001), 6)
+        else:
+            if symbol in MEME_COINS:
+                base_price = random.uniform(0.0005, 0.05)
+            elif symbol in CRYPTO_SYMBOLS:
+                base_price = random.uniform(0.2, 300)
+            else:  # stocks
+                base_price = random.uniform(20, 1200)
+            entry_price = round(base_price, 4)
+            exit_price = round(entry_price * (1 + roi / 100), 4)
+
+        quantity = round(deposit / max(entry_price, 0.0001), 6)
         commission = round(deposit * random.uniform(0.001, 0.003), 2)
         slippage = round(random.uniform(0.01, 0.15), 4)
 
@@ -1411,7 +1436,6 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             direction=direction
         )
 
-        # 💬 Profit/Loss label
         status_emoji = "✅" if profit >= 0 else "❌"
         profit_label = "Profit" if profit >= 0 else "Loss"
 
