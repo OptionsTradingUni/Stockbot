@@ -673,7 +673,7 @@ def generate_profit_scenario(symbol):
             f"Sold into the {symbol} rally before the pullback."
         ])
 
-    return deposit, profit, roi, reason, trading_style, direction
+    deposit, profit, roi, reason, trading_style, *_ = generate_profit_scenario(symbol)
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
         if is_meme:
