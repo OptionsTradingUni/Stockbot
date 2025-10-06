@@ -38,7 +38,9 @@ import yfinance as yf
 from pycoingecko import CoinGeckoAPI
 
 
-
+# Compatibility alias
+def generate_txid():
+    return generate_unique_txid(engine)
 # --- NEW: Market Data Fetcher ---
 cg = CoinGeckoAPI()
 # Map common symbols to CoinGecko API IDs
