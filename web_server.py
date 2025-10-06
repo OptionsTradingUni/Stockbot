@@ -2,7 +2,7 @@
 
 import os
 from flask import Flask, render_template, abort
-from sqlalchemy import create_engine, select, MetaData
+from models import engine, trade_logs
 from dotenv import load_dotenv
 
 # Load environment variables
