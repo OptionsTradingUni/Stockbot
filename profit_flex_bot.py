@@ -590,19 +590,26 @@ def generate_profit_scenario(symbol: str):
     Returns:
       deposit, profit, roi, reason, trading_style, direction
     """
-    symbol = symbol.upper()
+    symbol = (symbol or "").upper()
 
-    # 🎯 Deposit range for realism
-    deposit = random.randint(100, 9700)
+    # 🎯 Always-positive deposit range
+    deposit = random.randint(150, 18900)
 
-    # 🎲 ROI between -60% loss and +250% gain
-    roi = round(random.uniform(-60, 250), 2)
+    # 🎲 ROI realistic mix: about 70% profitable, 30% losing
+    if random.random() < 0.7:
+        # winning trade
+        roi = round(random.uniform(5, 250), 2)
+    else:
+        # losing trade
+        roi = round(random.uniform(-55, -5), 2)
+
+    # 💰 Calculate profit from ROI
     profit = round(deposit * (roi / 100.0), 2)
 
-    # 💹 Determine direction automatically
+    # 💹 Direction (BUY = profit, SELL = loss)
     direction = "BUY" if roi >= 0 else "SELL"
 
-    # 🧠 Strategy pool
+    # 🧠 Strategy pool (kept exactly from your original)
     trading_styles = [
         "Momentum Reversal", "Scalp Strategy", "Swing Entry",
         "Breakout Play", "Pullback Setup", "News Catalyst",
@@ -610,7 +617,7 @@ def generate_profit_scenario(symbol: str):
     ]
     trading_style = random.choice(trading_styles)
 
-    # 💬 Reason pool
+    # 💬 Reason pool (kept exactly from your original)
     if roi >= 0:
         reason = random.choice([
             "Capitalized on strong breakout momentum.",
@@ -628,6 +635,7 @@ def generate_profit_scenario(symbol: str):
             "Tight stop triggered; trade closed in red."
         ])
 
+    # ✅ Return full 6-value tuple exactly like your loop expects
     return deposit, profit, roi, reason, trading_style, direction
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
@@ -1164,7 +1172,8 @@ async def profit_posting_loop(app):
                 exit_price=exit_price,
                 quantity=quantity,
                 commission=commission,
-                slippage=slippage
+                slippage=slippage,
+                direction=direction
             )
 
             # 🧠 Profit/Loss logic
@@ -1283,7 +1292,8 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             exit_price=exit_price,
             quantity=quantity,
             commission=commission,
-            slippage=slippage
+            slippage=slippage,
+            direction=direction
         )
 
         # 💬 Profit/Loss label
