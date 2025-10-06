@@ -155,7 +155,7 @@
           {% if trade.profit >= 0 %}
             <span class="highlight profit">+${{ "%.2f"|format(trade.profit) }}</span>
           {% else %}
-            <span class="highlight loss">-${{ "%.2f"|format(abs(trade.profit)) }}</span>
+            <span class="highlight loss">-${{ "%.2f"|format(trade.profit|abs) }}</span>
           {% endif %}
         </div>
         <div class="item"><strong>ROI</strong><span>{{ "%.2f"|format(trade.roi or 0) }}%</span></div>
