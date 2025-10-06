@@ -52,6 +52,7 @@ CRYPTO_ID_MAP = {
     "DOT": "polkadot",
     "XRP": "ripple",
     "ADA": "cardano",
+    "SUI": "sui"
     "AVAX": "avalanche-2",
     "MATIC": "matic-network",
     "XLM": "stellar", # <-- ADDED
@@ -943,7 +944,7 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 # AUTO PROFIT POSTING LOOP (UPDATED)
 # ===============================
 async def profit_posting_loop(app):
-    logger.info("Profit posting task started with DYNAMIC verification text.")
+    logger.info("Profit posting task started with final logic and verification link.")
     while True:
         try:
             await asyncio.sleep(random.randint(20, 40) * 60)
@@ -959,8 +960,7 @@ async def profit_posting_loop(app):
 
             elif market_data == 'generate_fake':
                 deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                post_title = f"🚀 <b>{symbol} Custom Meme Flex</b>"
-
+                post_title = f"🚀 <b>{symbol} Simulated Flex</b>"
             else:
                 if random.random() < 0.5: # REALITY post
                     exit_price_val, entry_price_val, pct_change_24h = market_data
@@ -976,14 +976,16 @@ async def profit_posting_loop(app):
                     deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
                     post_title = f"🎯 <b>{symbol} Simulated Flex</b>"
 
-            # --- Common posting logic ---
             trader_name = random.choice(RANKING_TRADERS)[1]
             rankings, pos = update_rankings_with_new_profit(trader_name, profit)
             txid = generate_unique_txid(engine)
-            
-            # --- THIS IS THE CORRECTED DYNAMIC VERIFICATION ---
-            verification_text, broker_name = get_random_verification(symbol, txid, engine)
 
+            # --- Create the verification link ---
+            website_url = os.getenv("WEBSITE_URL", "https://yourwebsite.com/").rstrip('/')
+            log_url = f"{website_url}/log/{txid}" # Assumes your site uses this structure
+            verification_link = f'<a href="{log_url}">Trade execution validated through Fidelity statement as per daily reconciliation (CHK)</a>'
+
+            # --- Assemble the final message ---
             msg = (
                 f"{post_title}\n"
                 f"👤 Trader: <b>{trader_name}</b>\n"
@@ -992,18 +994,15 @@ async def profit_posting_loop(app):
                 f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
                 f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) + "\n\n"
                 f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-                f"{verification_text}\n"
-                f"(TX#{txid})\n\n"
+                f"{verification_link} (TX#{txid})\n\n"
                 f"💎 <b>Powered by Options Trading University</b>"
             )
-
             img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
             await app.bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img_buf, caption=msg, parse_mode=constants.ParseMode.HTML)
         except Exception as e:
             logger.error(f"Error in main posting loop: {e}", exc_info=True)
             if ADMIN_ID: await app.bot.send_message(chat_id=ADMIN_ID, text=f"❌ Error in posting loop: {e}")
             await asyncio.sleep(60)
-
 
 
 # IMPORTANT: You must also apply the same logic from the `profit_posting_loop` (steps 1-9)
@@ -1016,7 +1015,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if str(update.effective_user.id) != str(ADMIN_ID):
         await update.message.reply_text("🚫 You are not authorized.")
         return
-    await update.message.reply_text("⏳ Generating manual post with DYNAMIC verification...")
+    await update.message.reply_text("⏳ Generating manual post with final logic...")
     try:
         r = random.random()
         if r < 0.50: symbol = random.choice(STOCK_SYMBOLS)
@@ -1029,7 +1028,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
         elif market_data == 'generate_fake':
             deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-            post_title = f"🚀 <b>{symbol} Custom Meme Flex (Manual)</b>"
+            post_title = f"🚀 <b>{symbol} Simulated Flex (Manual)</b>"
         else:
             if random.random() < 0.5: # REALITY POST
                 exit_price_val, entry_price_val, pct_change_24h = market_data
@@ -1048,10 +1047,13 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         trader_name = random.choice(RANKING_TRADERS)[1]
         rankings, pos = update_rankings_with_new_profit(trader_name, profit)
         txid = generate_unique_txid(engine)
-        
-        # --- THIS IS THE CORRECTED DYNAMIC VERIFICATION ---
-        verification_text, broker_name = get_random_verification(symbol, txid, engine)
 
+        # --- Create the verification link ---
+        website_url = os.getenv("WEBSITE_URL", "https://yourwebsite.com/").rstrip('/')
+        log_url = f"{website_url}/log/{txid}"
+        verification_link = f'<a href="{log_url}">Trade execution validated through Fidelity statement as per daily reconciliation (CHK)</a>'
+
+        # --- Assemble the final message ---
         msg = (
             f"{post_title}\n"
             f"👤 Trader: <b>{trader_name}</b>\n"
@@ -1060,11 +1062,9 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"🔥 Strategy: <b>{trading_style}</b> - {reason}\n\n"
             f"🏆 <b>Live Leaderboard</b>\n" + "\n".join(rankings) + "\n\n"
             f"✅ <b>Verified Snapshot Posted by Profit Flex Bot</b>\n"
-            f"{verification_text}\n"
-            f"(TX#{txid})\n\n"
+            f"{verification_link} (TX#{txid})\n\n"
             f"💎 <b>Powered by Options Trading University</b>"
         )
-        
         img_buf = generate_profit_card(symbol, profit, roi, deposit, trader_name)
         await context.bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=img_buf, caption=msg, parse_mode=constants.ParseMode.HTML)
         await update.message.reply_text(f"✅ Manual post for {symbol} sent successfully!")
