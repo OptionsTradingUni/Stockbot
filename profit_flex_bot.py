@@ -584,96 +584,51 @@ def fetch_recent_profits():
 # Helper: Generate profit scenario with realistic gains
 import numpy as np # Make sure 'import numpy as np' is at the top of your script
 
-def generate_profit_scenario(symbol):
+def generate_profit_scenario(symbol: str):
     """
-    Generates a balanced and authentic profit scenario using a distribution
-    that makes average outcomes common and extreme outcomes rare.
+    Generates a realistic simulated trade scenario.
+    Returns:
+      deposit, profit, roi, reason, trading_style, direction
     """
-    # --- Step 1: Define parameters for different asset types ---
-    if symbol in MEME_COINS:
-        deposit = random.randint(100, 9700)
-        avg_multiplier = 3.5  # Avg 250% ROI
-        spread = 1.5
-    else:  # Stocks & Regular Crypto
-        deposit = random.randint(500, 16500)
-        avg_multiplier = 1.5  # Avg 50% ROI
-        spread = 0.4
+    symbol = symbol.upper()
 
-    # --- Step 2: Generate a multiplier ---
-    multiplier = max(1.1, np.random.normal(loc=avg_multiplier, scale=spread))
-    profit = deposit * (multiplier - 1)
-    roi = (multiplier - 1) * 100
+    # 🎯 Deposit range for realism
+    deposit = random.randint(100, 9700)
 
-    # --- Step 3: Generate trading style and reason ---
-    if symbol in STOCK_SYMBOLS:
-        trading_style = random.choice([
-            "Scalping", "Day Trading", "Swing Trading", "Position Trade",
-            "Momentum Trading", "Breakout Trading", "Mean Reversion",
-            "Value Investing", "Growth Investing", "Earnings Play", "Arbitrage"
-        ])
-        reasons = [
-            f"Nailed the entry on this {symbol} {trading_style} setup!",
-            f"This {symbol} breakout trade followed the plan perfectly.",
-            f"A solid technical analysis read on the {symbol} chart.",
-            f"Fading the market weakness on {symbol} paid off.",
-            f"Caught the momentum swing on this {symbol} trade.",
-            f"The earnings catalyst provided the perfect {symbol} run-up.",
-            f"Market structure shifted bullishly for {symbol}, had to take the trade.",
-            f"Played the volatility contraction on {symbol} like a textbook.",
-            f"This {symbol} gap-fill strategy was a clean win.",
-        ]
-        reason = random.choice(reasons)
+    # 🎲 ROI between -60% loss and +250% gain
+    roi = round(random.uniform(-60, 250), 2)
+    profit = round(deposit * (roi / 100.0), 2)
 
-    elif symbol in CRYPTO_SYMBOLS:
-        trading_style = random.choice([
-            "Swing Trading", "HODLing", "Leverage Play", "DCA Strategy",
-            "Yield Farming", "Arbitrage", "On-Chain Analysis", "Futures Trade"
-        ])
-        reasons = [
-            f"This {symbol} accumulation phase led to a massive breakout.",
-            f"Altcoin season gave this {symbol} trade the legs it needed.",
-            f"Perfectly timed the {symbol} dip, a classic buy-the-fear moment.",
-            f"On-chain data signaled a bullish move for {symbol}.",
-            f"Riding the {symbol} narrative was highly profitable.",
-            f"The funding rate for {symbol} presented a clear opportunity.",
-            f"Spotted a liquidity grab on the {symbol} chart and took the trade.",
-            f"This {symbol} protocol upgrade was the catalyst we were waiting for.",
-        ]
-        reason = random.choice(reasons)
+    # 💹 Determine direction automatically
+    direction = "BUY" if roi >= 0 else "SELL"
 
-    else:  # Meme Coins
-        trading_style = random.choice([
-            "Community Flip", "Pump Ride", "Sniping", "Ape-in",
-            "Degen Play", "Diamond Handing", "Micro-Cap Gem Hunt"
-        ])
-        reasons = [
-            f"Got in on the ground floor of the {symbol} hype cycle.",
-            f"The community power behind {symbol} is unstoppable!",
-            f"This {symbol} degen play turned out to be a massive win.",
-            f"Sniped the {symbol} launch before the crowd rushed in.",
-            f"Faded the FUD and caught the {symbol} mega-pump.",
-            f"A key influencer mention sent {symbol} to the moon.",
-            f"The tokenomics of {symbol} were too good to ignore.",
-            f"This was a classic high-risk, high-reward {symbol} trade.",
-        ]
-        reason = random.choice(reasons)
+    # 🧠 Strategy pool
+    trading_styles = [
+        "Momentum Reversal", "Scalp Strategy", "Swing Entry",
+        "Breakout Play", "Pullback Setup", "News Catalyst",
+        "Range Compression", "Market Analysis", "Dip Buy Setup"
+    ]
+    trading_style = random.choice(trading_styles)
 
-    # --- Step 4: Add automatic BUY/SELL realism ---
-    roi, direction = determine_direction(roi, simulated=True)
-    profit = deposit * (roi / 100.0)
-
-    # --- Step 5: Add short-trade reasons if SELL ---
-    if direction == "SELL":
+    # 💬 Reason pool
+    if roi >= 0:
         reason = random.choice([
-            f"Shorted {symbol} after spotting bearish divergence.",
-            f"Took a {symbol} short as resistance held strong.",
-            f"Faded the {symbol} breakout for a clean short setup.",
-            f"Bearish setup confirmed — shorted {symbol} perfectly.",
-            f"Executed a textbook short play on {symbol}.",
-            f"Sold into the {symbol} rally before the pullback."
+            "Capitalized on strong breakout momentum.",
+            "Executed near perfect dip entry before rebound.",
+            "Followed institutional flow; profit locked.",
+            "High-volume move aligned with RSI confirmation.",
+            "Used call options to leverage bullish continuation."
+        ])
+    else:
+        reason = random.choice([
+            "Stop-loss triggered after failed breakout.",
+            "Fell victim to sudden reversal; managed loss quickly.",
+            "Bearish engulfing invalidated trade setup.",
+            "Unexpected news event caused downside gap.",
+            "Tight stop triggered; trade closed in red."
         ])
 
-    deposit, profit, roi, reason, trading_style, *_ = generate_profit_scenario(symbol)
+    return deposit, profit, roi, reason, trading_style, direction
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
         if is_meme:
@@ -1169,7 +1124,7 @@ async def profit_posting_loop(app):
                         use_simulated = True
 
                 if use_simulated or not market_data or market_data == 'generate_fake':
-                    deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                    deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
                     post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                     break
 
@@ -1293,7 +1248,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     use_simulated = True
 
             if use_simulated or not market_data or market_data == 'generate_fake':
-                deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
+                deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
                 post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                 break
 
