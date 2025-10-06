@@ -1145,13 +1145,15 @@ async def profit_posting_loop(app):
                         # ✅ Real post
                         deposit = random.randint(500, 5000)
                         roi = pct_change_24h
-                        # --- Profit calculation (handles BUY/SELL + profit/loss correctly) ---
-                        raw_profit = deposit * (roi / 100.0)
 
-                         # For SELL trades, invert ROI logic (negative ROI = profit)
-                 if direction == "SELL":
-                    raw_profit = -raw_profit
-                    profit = round(raw_profit, 2)
+                         # --- Determine direction based on market move ---
+                        direction = "BUY" if roi >= 0 else "SELL"
+
+                         # --- Profit calculation (handles BUY/SELL + profit/loss correctly) ---
+                         raw_profit = deposit * (roi / 100.0)
+                    if direction == "SELL":
+                         raw_profit = -raw_profit  # short sells profit when price drops
+                         profit = round(raw_profit, 2)
                         reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                         trading_style = "Market Analysis"
                         post_title = f"📈 <b>{symbol} Live Market Report</b>"
@@ -1267,13 +1269,15 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 if abs(pct_change_24h) >= 0.5:
                     deposit = random.randint(500, 5000)
                         roi = pct_change_24h
-                        # --- Profit calculation (handles BUY/SELL + profit/loss correctly) ---
-                        raw_profit = deposit * (roi / 100.0)
 
-                         # For SELL trades, invert ROI logic (negative ROI = profit)
-                 if direction == "SELL":
-                    raw_profit = -raw_profit
-                    profit = round(raw_profit, 2)
+                         # --- Determine direction based on market move ---
+                        direction = "BUY" if roi >= 0 else "SELL"
+
+                         # --- Profit calculation (handles BUY/SELL + profit/loss correctly) ---
+                         raw_profit = deposit * (roi / 100.0)
+                    if direction == "SELL":
+                         raw_profit = -raw_profit  # short sells profit when price drops
+                         profit = round(raw_profit, 2)
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                     trading_style = "Market Analysis"
                     post_title = f"📈 <b>{symbol} Live Market Report </b>"
