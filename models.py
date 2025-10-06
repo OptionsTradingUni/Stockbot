@@ -52,27 +52,32 @@ rankings_cache = Table(
     Column("timestamp", DateTime)
 )
 
+# ===============================
+# TRADE LOGS TABLE DEFINITION
+# ===============================
+
 trade_logs = Table(
-    "trade_logs", metadata,
-    Column("txid", String, primary_key=True),
+    "trade_logs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("txid", String(16), unique=True, nullable=False),
     Column("timestamp", DateTime, default=datetime.utcnow),
-    Column("symbol", String),
-    Column("trader_name", String),
-    Column("broker_name", String, default="Verified Exchange"),
-    Column("direction", String, default="Buy/Sell"),
-    Column("status", String, default="Filled"),
-    Column("quantity", Float, default=1.0),
+    Column("symbol", String(50)),
+    Column("trader_name", String(100)),
+    Column("broker_name", String(100), default="Interactive Brokers"),
+    Column("direction", String(10), default="BUY"),
+    Column("status", String(20), default="Filled"),
+    Column("quantity", Float),
     Column("deposit", Float),
     Column("profit", Float),
     Column("roi", Float),
-    Column("strategy", String),
-    Column("reason", String),
+    Column("strategy", String(200)),
+    Column("reason", String(500)),
+    Column("entry_price", Float),
+    Column("exit_price", Float),
+    Column("total_value_exit", Float),
+    Column("commission", Float),
+    Column("slippage", Float),
     Column("posted_at", DateTime, default=datetime.utcnow),
-    Column("entry_price", Float, default=0.0),
-    Column("exit_price", Float, default=0.0),
-    Column("total_value_exit", Float, default=0.0),
-    Column("commission", Float, default=0.0),
-    Column("slippage", Float, default=0.0)
 )
-# This command creates the tables if they don't exist
 metadata.create_all(engine)
