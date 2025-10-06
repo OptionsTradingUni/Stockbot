@@ -2,7 +2,6 @@ python-telegram-bot==21.4
 sqlalchemy==2.0.25
 pandas==2.2.0
 python-dotenv==1.0.1
-pyarrow==21.0.0
 psycopg2-binary==2.9.10
 matplotlib>=3.8
 Pillow>=10.0
@@ -10,14 +9,10 @@ requests==2.32.3
 loguru==0.7.2
 
 # Web app backend
-fastapi
-uvicorn
-jinja2
 Flask
 gunicorn
 
 # Data and API requests
-requests
 yfinance
 pycoingecko
 
