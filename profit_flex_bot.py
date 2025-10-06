@@ -68,6 +68,50 @@ CRYPTO_ID_MAP = {
 
 # import this to access metadata
 
+# --- NEW unified helper for real entry/exit ---
+def generate_entry_exit(symbol, roi):
+    """Generate realistic entry & exit prices for any symbol."""
+    symbol_upper = symbol.upper()
+
+    try:
+        # 1️⃣ STOCKS → use yfinance
+        if symbol_upper in STOCK_SYMBOLS:
+            stock = yf.Ticker(symbol_upper)
+            live_price = stock.info.get("regularMarketPrice")
+            if not live_price:
+                live_price = stock.history(period="1d")["Close"].iloc[-1]
+            entry = round(float(live_price), 4)
+            exit = round(entry * (1 + roi / 100.0), 4)
+            return entry, exit
+
+        # 2️⃣ CRYPTO → use CoinGecko
+        elif symbol_upper in CRYPTO_SYMBOLS:
+            cg_id = CRYPTO_ID_MAP.get(symbol_upper)
+            if cg_id:
+                data = cg.get_price(ids=cg_id, vs_currencies="usd")
+                entry = float(data[cg_id]["usd"])
+                exit = round(entry * (1 + roi / 100.0), 4)
+                return entry, exit
+
+        # 3️⃣ MEME COINS (fake / simulated, e.g. NIKY, DEW)
+        elif symbol_upper in ["NIKY", "DEW"]:
+            base = random.uniform(0.0001, 0.05)
+            entry = round(base, 6)
+            exit = round(entry * (1 + roi / 100.0), 6)
+            return entry, exit
+
+        # fallback if symbol not recognized
+        else:
+            entry = round(random.uniform(20, 1000), 2)
+            exit = round(entry * (1 + roi / 100.0), 2)
+            return entry, exit
+
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to fetch entry/exit for {symbol}: {e}")
+        entry = round(random.uniform(20, 1000), 2)
+        exit = round(entry * (1 + roi / 100.0), 2)
+        return entry, exit
+      
 def init_traders_if_needed():
     """Ensure traders table has at least basic sample users after reset."""
     from models import users
@@ -1093,8 +1137,7 @@ async def profit_posting_loop(app):
                 continue
 
             # 📊 Extra trade details (for log + realism)
-            entry_price = round(random.uniform(20, 1000), 2)
-            exit_price = round(entry_price * (1 + roi / 100), 2)
+            entry_price, exit_price = generate_entry_exit(symbol, roi)
             quantity = round(deposit / entry_price, 6)
             commission = round(deposit * random.uniform(0.001, 0.003), 2)
             slippage = round(random.uniform(0.01, 0.15), 4)
@@ -1204,8 +1247,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
         # 🔢 Generate trade details
-        entry_price = round(random.uniform(20, 1000), 2)
-        exit_price = round(entry_price * (1 + roi / 100), 2)
+        entry_price, exit_price = generate_entry_exit(symbol, roi)
         quantity = round(deposit / entry_price, 6)
         commission = round(deposit * random.uniform(0.001, 0.003), 2)
         slippage = round(random.uniform(0.01, 0.15), 4)
