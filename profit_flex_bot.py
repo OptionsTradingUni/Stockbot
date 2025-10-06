@@ -1065,7 +1065,7 @@ async def profit_posting_loop(app):
                 if use_simulated or not market_data or market_data == 'generate_fake':
                     # ✅ Simulated trade
                     deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                    post_title = f"🎯 <b>{symbol} Simulated Flex</b>"
+                    post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                     break
                 symbol = random.choice(all_symbols)
             else:
@@ -1171,13 +1171,13 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     profit = deposit * (roi / 100.0)
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move!"
                     trading_style = "Market Analysis"
-                    post_title = f"📈 <b>{symbol} Live Market Report (Manual)</b>"
+                    post_title = f"📈 <b>{symbol} Live Market Report </b>"
                     break
                 else:
                     use_simulated = True
             if use_simulated or not market_data or market_data == 'generate_fake':
                 deposit, profit, roi, reason, trading_style = generate_profit_scenario(symbol)
-                post_title = f"🎯 <b>{symbol} Simulated Flex (Manual)</b>"
+                post_title = f"🎯 <b>{symbol} Live Market Report </b>"
                 break
             symbol = random.choice(all_symbols)
         else:
