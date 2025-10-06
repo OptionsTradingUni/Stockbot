@@ -30,33 +30,41 @@ def home():
 
 @app.route("/api/recent")
 def recent_trade_logs():
-    """
-    Returns the 30–40 most recent trades as JSON for the website widget.
-    Used by the <script> in logs_template.html or index.html.
-    """
+    """Return up to 40 most recent trades as JSON."""
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT
-                    txid,
-                    symbol,
-                    broker_name,
-                    trader_name,
-                    profit,
-                    roi,
-                    posted_at
+            query = """
+                SELECT txid, symbol, trader_name,
+                       COALESCE(broker_name, 'Verified Exchange') AS broker_name,
+                       profit, roi, posted_at
                 FROM trade_logs
                 ORDER BY posted_at DESC
                 LIMIT 40
-            """)).mappings().all()
+            """
+            rows = conn.execute(text(query)).mappings().all()
 
-        logs = [dict(row) for row in result]
-        return jsonify(logs)
+        if not rows:
+            return jsonify({"message": "No recent trades found."}), 200
+
+        data = []
+        for row in rows:
+            data.append({
+                "txid": row["txid"],
+                "symbol": row["symbol"],
+                "broker_name": row["broker_name"],
+                "trader_name": row["trader_name"],
+                "profit": float(row["profit"] or 0),
+                "roi": float(row["roi"] or 0),
+                "posted_at": row["posted_at"].isoformat() if row["posted_at"] else None
+            })
+
+        return jsonify(data), 200
 
     except Exception as e:
-        logger.error(f"⚠️ Error fetching recent logs: {e}", exc_info=True)
-        return jsonify({"error": "Unable to fetch logs"}), 500
-        
+        import traceback
+        traceback.print_exc()
+        logger.error(f"⚠️ Error fetching /api/recent: {e}")
+        return jsonify({"error": str(e)}), 500
 @app.route('/log/<txid>')
 def show_log(txid):
     """Display verification details for a specific trade."""
