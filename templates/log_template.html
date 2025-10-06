@@ -13,7 +13,8 @@
       margin: 0;
       padding: 40px 20px;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
     }
     .card {
       width: 100%;
@@ -107,6 +108,24 @@
     }
     a { color: #3b82f6; text-decoration: none; }
     a:hover { text-decoration: underline; }
+
+    /* Extra styling for recent logs */
+    #recent-logs {
+      max-width: 860px;
+      width: 100%;
+    }
+    #logs-container div {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin: 10px 0;
+      font-size: 15px;
+    }
+    #logs-container div:hover {
+      background: #273449;
+      transition: background 0.3s ease;
+    }
   </style>
 </head>
 <body>
@@ -171,5 +190,41 @@
       </div>
     </div>
   </div>
+
+  <!-- 🧾 Recent Trade Logs Section -->
+  <section id="recent-logs" style="margin-top:40px; text-align:center;">
+    <h2 style="color:#3b82f6;">🧾 Recent Trade Logs</h2>
+    <div id="logs-container">Loading recent activity...</div>
+  </section>
+
+  <script>
+  // ✅ Fetch and display the 30–40 most recent logs dynamically
+  fetch("https://logs.optionstradinguni.online/api/recent")
+    .then(res => res.json())
+    .then(data => {
+      const container = document.getElementById("logs-container");
+      if (!data || data.length === 0) {
+        container.innerText = "No recent trades available.";
+        return;
+      }
+
+      container.innerHTML = data.slice(0, 40).map(log => `
+        <div>
+          <strong style="color:#f9fafb;">${log.symbol}</strong> — 
+          <span style="color:#9ca3af;">${log.broker_name}</span><br>
+          💰 <b style="color:#22c55e;">$${log.profit.toFixed(2)}</b> 
+          (<span style="color:#38bdf8;">${log.roi.toFixed(2)}%</span>)<br>
+          👤 ${log.trader_name} | 
+          <small style="color:#9ca3af;">${new Date(log.posted_at).toLocaleString()}</small><br>
+          <a href="https://logs.optionstradinguni.online/log/${log.txid}" 
+             target="_blank" 
+             style="color:#3b82f6; text-decoration:none;">🔗 View Log →</a>
+        </div>
+      `).join("");
+    })
+    .catch(() => {
+      document.getElementById("logs-container").innerText = "Unable to load logs at the moment.";
+    });
+  </script>
 </body>
 </html>
