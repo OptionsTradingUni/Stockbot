@@ -28,7 +28,7 @@ matplotlib.use("Agg")  # headless backend for servers
 import matplotlib.pyplot as plt
 from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from traders import RANKING_TRADERS
-from verification_texts import get_random_verification
+from verification_texts import generate_unique_txid, get_random_verification
 from telegram.error import TelegramError
 from telegram.ext import MessageHandler, filters
 from telegram.constants import ChatMemberStatus
