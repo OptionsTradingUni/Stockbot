@@ -141,8 +141,12 @@
         <div class="item"><strong>Asset</strong><span>{{ log.symbol }}</span></div>
         <div class="item"><strong>Trader</strong><span>{{ log.trader_name }}</span></div>
         <div class="item"><strong>Strategy</strong><span>{{ log.strategy or "N/A" }}</span></div>
-        <div class="item"><strong>Posted</strong><span>{{ log.time_ago }}</span></div>
-      </div>
+        <div class="item">
+  <strong>Posted</strong>
+  <span>
+    {{ log.time_ago }}
+  </span>
+</div>
     </div>
 
     <div class="section">
