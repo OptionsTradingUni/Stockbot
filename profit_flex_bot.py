@@ -88,57 +88,50 @@ def determine_direction(roi, simulated=True):
         direction = "BUY" if roi >= 0 else "SELL"
     return roi, direction
 
-# --- NEW unified helper for real entry/exit ---
 def generate_entry_exit(symbol, roi, live_price=None):
     """
     Generate realistic entry & exit prices for any symbol.
-    If live_price is provided (from get_market_data), reuse it instead of random fallback.
+    If live_price is provided (from get_market_data), reuse it as the exit price.
     """
     symbol_upper = symbol.upper()
 
     try:
-        # 🟢 1️⃣ Use live price if available
-        if live_price:
-            entry = float(live_price)
-            exit = round(entry * (1 + roi / 100.0), 6)
-            return entry, exit
+        # 🟢 Use live price if available, otherwise fetch or fallback
+        if live_price is not None:
+            exit_price = round(float(live_price), 6)  # ✅ real, live exit
+        else:
+            # 🟢 STOCKS → use yfinance
+            if symbol_upper in STOCK_SYMBOLS:
+                stock = yf.Ticker(symbol_upper)
+                live_price = stock.info.get("regularMarketPrice")
+                if not live_price:
+                    live_price = stock.history(period="1d")["Close"].iloc[-1]
+                exit_price = round(float(live_price), 6)
+            # 🟢 CRYPTO → use CoinGecko
+            elif symbol_upper in CRYPTO_SYMBOLS:
+                cg_id = CRYPTO_ID_MAP.get(symbol_upper)
+                if cg_id:
+                    data = cg.get_price(ids=cg_id, vs_currencies="usd")
+                    exit_price = round(float(data[cg_id]["usd"]), 6)
+                else:
+                    exit_price = round(random.uniform(1, 500), 6)  # fallback
+            # 🟢 MEME COINS (simulated)
+            elif symbol_upper in ["NIKY", "DEW"]:
+                exit_price = round(random.uniform(0.0001, 0.05), 6)
+            # 🟡 Generic fallback
+            else:
+                exit_price = round(random.uniform(1, 500), 6)
 
-        # 🟢 2️⃣ STOCKS → use yfinance
-        if symbol_upper in STOCK_SYMBOLS:
-            stock = yf.Ticker(symbol_upper)
-            live_price = stock.info.get("regularMarketPrice")
-            if not live_price:
-                live_price = stock.history(period="1d")["Close"].iloc[-1]
-            entry = round(float(live_price), 4)
-            exit = round(entry * (1 + roi / 100.0), 4)
-            return entry, exit
-
-        # 🟢 3️⃣ CRYPTO → use CoinGecko
-        elif symbol_upper in CRYPTO_SYMBOLS:
-            cg_id = CRYPTO_ID_MAP.get(symbol_upper)
-            if cg_id:
-                data = cg.get_price(ids=cg_id, vs_currencies="usd")
-                entry = float(data[cg_id]["usd"])
-                exit = round(entry * (1 + roi / 100.0), 6)
-                return entry, exit
-
-        # 🟢 4️⃣ MEME COINS (simulated)
-        elif symbol_upper in ["NIKY", "DEW"]:
-            base = random.uniform(0.0001, 0.05)
-            entry = round(base, 6)
-            exit = round(entry * (1 + roi / 100.0), 6)
-            return entry, exit
-
-        # 🟡 5️⃣ Generic fallback (stocks-style)
-        entry = round(random.uniform(20, 1000), 2)
-        exit = round(entry * (1 + roi / 100.0), 2)
-        return entry, exit
+        # 🟢 Compute fake entry based on ROI
+        entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
+        return entry_price, exit_price
 
     except Exception as e:
         logger.warning(f"⚠️ Failed to fetch entry/exit for {symbol}: {e}")
-        entry = round(random.uniform(20, 1000), 2)
-        exit = round(entry * (1 + roi / 100.0), 2)
-        return entry, exit
+        exit_price = round(random.uniform(1, 500), 6)
+        entry_price = round(exit_price / (1 + roi / 100.0), 6)
+        return entry_price, exit_price
+
 
 def pick_broker_for_symbol(symbol):
     """Return a realistic broker/exchange name depending on symbol type."""
