@@ -1180,7 +1180,7 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG)
     draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol.upper(), fill=TEXT_MAIN, font=font_symbol, anchor="mm")
     draw.text((pad + circle_d + 40 * scale, pad + 10 * scale), trader_name, fill=TEXT_MAIN, font=font_label, anchor="ls")
-    draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Real Trade Snapshot", fill=TEXT_SUB, font=font_small, anchor="ls")
+    draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Trade Snapshot", fill=TEXT_SUB, font=font_small, anchor="ls")
 
     # --- Profit + ROI Section (Mary Clark Position) ---
     profit_prefix = "+" if profit >= 0 else "-"
