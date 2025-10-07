@@ -1,6 +1,7 @@
 import os
 import logging
 from flask import Flask, render_template, jsonify
+from flask_cors import CORS  # <-- ADD THIS IMPORT
 from sqlalchemy import select, text
 from dotenv import load_dotenv
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ except Exception as e:
 
 # --- Flask app setup ---
 app = Flask(__name__)
+CORS(app)  # <-- ADD THIS RIGHT AFTER CREATING THE APP
 
 @app.route("/")
 def home():
@@ -32,77 +34,59 @@ def home():
     logger.info("Root URL '/' accessed successfully.")
     return "✅ Web Server is running and accessible."
 
-
 # ----------------------------------------------------------------------
-# /profit — Page to display the 100 most recent trades
+# API route to provide the last 100 trades as raw data
 # ----------------------------------------------------------------------
-@app.route("/profit")
-def profit_page():
-    """Render a page showing the 100 most recent trades."""
+@app.route("/api/recent100")
+def api_recent_100():
+    """Return up to 100 most recent trades as JSON data."""
     try:
         with engine.connect() as conn:
-            # Query for the last 100 trades
             query = text("""
                 SELECT txid, symbol, trader_name, profit, roi, posted_at
-                FROM trade_logs
-                ORDER BY posted_at DESC
-                LIMIT 100
+                FROM trade_logs ORDER BY posted_at DESC LIMIT 100
             """)
             rows = conn.execute(query).mappings().all()
 
-        # Process rows to add the 'time_ago' string
-        trades_data = []
+        data = []
         for row in rows:
-            trade = dict(row) # Convert to a mutable dictionary
-            posted_at = trade.get("posted_at")
-            trade["time_ago"] = time_ago(posted_at) if posted_at else "Unknown time"
-            trades_data.append(trade)
-
-        # Render the new template with the trade data
-        return render_template("profit.html", trades=trades_data)
-
+            posted_at = row.get("posted_at")
+            # Note: you need the time_ago function for this to work
+            data.append({
+                "symbol": row["symbol"],
+                "trader_name": row["trader_name"],
+                "profit": float(row["profit"] or 0),
+                "roi": float(row["roi"] or 0), # Added ROI for completeness
+                "time_ago": time_ago(posted_at) if posted_at else "Unknown time"
+            })
+        return jsonify(data)
     except Exception as e:
-        logger.error(f"⚠️ Error fetching /profit page: {e}", exc_info=True)
-        return "<h2>500 - Could not load trade data</h2>", 500
+        return jsonify({"error": "Failed to fetch trades"}), 500
         
 # ----------------------------------------------------------------------
 # Helper: Time-ago formatting
 # ----------------------------------------------------------------------
 def time_ago(posted_at):
-    """Convert datetime into 'x time ago — full UTC time' string (handles naive & aware datetimes)."""
+    """Convert datetime into 'x time ago' string."""
     if not posted_at:
         return "Unknown time"
-
     now = datetime.now(timezone.utc)
-
-    # 🩹 Fix: convert naive datetime to UTC
     if posted_at.tzinfo is None:
         posted_at = posted_at.replace(tzinfo=timezone.utc)
-
     diff = now - posted_at
     seconds = diff.total_seconds()
     minutes = int(seconds // 60)
     hours = int(minutes // 60)
     days = int(hours // 24)
-
-    # Relative text
     if seconds < 60:
-        rel = "just now"
+        return "just now"
     elif minutes < 60:
-        rel = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
     elif hours < 24:
-        rel = f"{hours} hour{'s' if hours != 1 else ''} ago"
-    elif days == 1:
-        rel = "yesterday"
-    elif days < 7:
-        rel = f"{days} days ago"
+        return f"{hours} hour{'s' if hours > 1 else ''} ago"
     else:
-        rel = posted_at.strftime("%b %d, %Y")
+        return f"{days} day{'s' if days > 1 else ''} ago"
 
-    # 🕒 Full UTC timestamp
-    full_time = posted_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-
-    return f"{rel} — {full_time}"
 # ----------------------------------------------------------------------
 # /api/recent — JSON API for last 40 trades
 # ----------------------------------------------------------------------
