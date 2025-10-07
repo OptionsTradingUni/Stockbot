@@ -89,72 +89,188 @@ def determine_direction(roi, simulated=True):
     return roi, direction
 
 # =========================
-# 🌐 MARKET DATA FETCHER (AUTO SOURCE)
+# 🌐 HYBRID MARKET DATA FETCHER
+# (Stocks = yfinance / Crypto = Coinbase→CoinGecko→Simulated)
 # =========================
 def get_market_data(symbol):
     """
-    Attempts live price data with priority:
-    - Stocks: yfinance
-    - Crypto: Coinbase > CoinGecko
-    - Meme (NIKY/DEW): simulated
-    Returns tuple: (current_price, price_24h_ago, %change_24h)
+    Fetch live market data with proper source routing:
+      🟢 Stocks → Yahoo Finance (yfinance)
+      🟢 Crypto / Meme → Coinbase → CoinGecko → simulated fallback
+      🟢 NIKY & DEW → simulated only
+    Returns tuple: (current_price, price_24h_ago, pct_change_24h)
     """
     s = symbol.upper().strip()
 
+    # ------------------------
+    # 1️⃣ STOCKS → YFINANCE
+    # ------------------------
     if s in STOCK_SYMBOLS:
-        # yfinance for stocks
         try:
-            stock = yf.Ticker(s)
-            last_price = stock.info.get("regularMarketPrice")
-            if not last_price:
-                last_price = stock.history(period="1d")["Close"].iloc[-1]
-            previous_close = stock.info.get("regularMarketPreviousClose", last_price)
-            pct_change = ((last_price - previous_close) / previous_close) * 100 if previous_close else 0
-            open_price = previous_close
-            logger.info(f"📊 yfinance → {s} @ ${last_price:.4f} ({pct_change:+.2f}%)")
-            return (last_price, open_price, pct_change)
+            ticker = yf.Ticker(s)
+            data = ticker.history(period="2d", interval="1h")
+            if data.empty:
+                raise ValueError("No data from yfinance.")
+            current_price = float(data["Close"].iloc[-1])
+            price_24h_ago = float(data["Close"].iloc[0])
+            pct_change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
+            logger.info(f"📈 yfinance → {s} @ ${current_price:.4f} ({pct_change_24h:+.2f}%)")
+            return (current_price, price_24h_ago, pct_change_24h)
         except Exception as e:
-            logger.warning(f"⚠️ yfinance failed for {s}: {e}, using simulated fallback")
+            logger.warning(f"⚠️ yfinance failed for {s}: {e}")
+            # fallback below
 
-    elif s in CRYPTO_SYMBOLS:
-        # Coinbase first
+    # ------------------------
+    # 2️⃣ MEME COINS NIKY / DEW → SIMULATED ONLY
+    # ------------------------
+    if s in ["NIKY", "DEW"]:
+        base_price = random.uniform(0.0001, 0.05)
+        pct_change = random.uniform(-5, 15)
+        open_price = base_price / (1 + pct_change / 100)
+        logger.info(f"🎭 Simulated meme coin → {s} @ ${base_price:.4f} ({pct_change:+.2f}%)")
+        return (base_price, open_price, pct_change)
+
+    # ------------------------
+    # 3️⃣ CRYPTO → COINBASE
+    # ------------------------
+    if s in CRYPTO_SYMBOLS or s in MEME_COINS:
         try:
-            url = f"https://api.coinbase.com/v2/prices/{s}-USD/spot"
+            pair = f"{s}-USD"
+            url = f"https://api.coinbase.com/v2/prices/{pair}/spot"
             r = requests.get(url, timeout=5)
-            if r.status_code == 200 and "data" in r.json():
-                last_price = float(r.json()["data"]["amount"])
-            else:
-                raise Exception("Coinbase API failed")
-            # Get 24h change from CoinGecko (Coinbase spot lacks it)
-            cg_id = CRYPTO_ID_MAP.get(s, s.lower())
+            if r.status_code == 200:
+                current_price = float(r.json()["data"]["amount"])
+
+                # Approximate 24h open
+                hist_url = f"https://api.coinbase.com/v2/prices/{pair}/historic?period=day"
+                rh = requests.get(hist_url, timeout=5)
+                if rh.status_code == 200 and "data" in rh.json():
+                    prices = [float(p["price"]) for p in rh.json()["data"].get("prices", [])]
+                    price_24h_ago = prices[-1] if len(prices) > 1 else current_price
+                else:
+                    price_24h_ago = current_price * random.uniform(0.97, 1.03)
+
+                pct_change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
+                logger.info(f"💰 Coinbase → {s} @ ${current_price:.4f} ({pct_change_24h:+.2f}%)")
+                return (current_price, price_24h_ago, pct_change_24h)
+        except Exception as e:
+            logger.warning(f"⚠️ Coinbase failed for {s}: {e}")
+
+        # ------------------------
+        # 4️⃣ COINGECKO FALLBACK
+        # ------------------------
+        try:
+            cg_id = CRYPTO_ID_MAP.get(s)
             if cg_id:
                 data = cg.get_price(ids=cg_id, vs_currencies="usd", include_24hr_change=True)
-                pct_change = data.get(cg_id, {}).get("usd_24h_change", 0)
-            else:
-                pct_change = 0
-            open_price = last_price / (1 + pct_change / 100)
-            logger.info(f"📊 Coinbase → {s} @ ${last_price:.4f} ({pct_change:+.2f}%)")
-            return (last_price, open_price, pct_change)
+                if cg_id in data:
+                    current_price = float(data[cg_id]["usd"])
+                    pct_change_24h = data.get(cg_id, {}).get("usd_24h_change", random.uniform(-3, 3))
+                    price_24h_ago = current_price / (1 + pct_change_24h / 100)
+                    logger.info(f"🦎 CoinGecko → {s} @ ${current_price:.4f} ({pct_change_24h:+.2f}%)")
+                    return (current_price, price_24h_ago, pct_change_24h)
         except Exception as e:
-            logger.warning(f"⚠️ Coinbase failed for {s}: {e}, falling back to CoinGecko")
-            try:
-                cg_id = CRYPTO_ID_MAP.get(s, s.lower())
-                data = cg.get_price(ids=cg_id, vs_currencies="usd", include_24hr_change=True)
-                last_price = float(data[cg_id]["usd"])
-                pct_change = data.get(cg_id, {}).get("usd_24h_change", 0)
-                open_price = last_price / (1 + pct_change / 100)
-                logger.info(f"🦎 CoinGecko → {s} @ ${last_price:.4f} ({pct_change:+.2f}%)")
-                return (last_price, open_price, pct_change)
-            except Exception as e:
-                logger.warning(f"⚠️ CoinGecko failed for {s}: {e}, using simulated fallback")
+            logger.warning(f"⚠️ CoinGecko failed for {s}: {e}")
 
-    # Simulated for memes (NIKY/DEW) or full fallback
-    base_price = random.uniform(0.0001, 0.05) if s in ["NIKY", "DEW"] else random.uniform(1, 500)
+    # ------------------------
+    # 5️⃣ SIMULATED FALLBACK (FINAL)
+    # ------------------------
+    base_price = random.uniform(0.001, 500)
     pct_change = random.uniform(-10, 15)
     open_price = base_price / (1 + pct_change / 100)
     logger.info(f"🧩 Simulated fallback → {s} @ ${base_price:.4f} ({pct_change:+.2f}%)")
     return (base_price, open_price, pct_change)
 
+# =========================
+# 🎯 ENTRY & EXIT GENERATOR (Matches Hybrid Fetcher)
+# =========================
+def generate_entry_exit(symbol, roi, live_price=None):
+    """
+    Generate realistic entry & exit prices for any symbol type.
+    - Stocks → yfinance
+    - Crypto → Coinbase → CoinGecko → Simulated
+    - Meme coins (NIKY/DEW) → Simulated only
+    If `live_price` is passed, it's used as the current/exit price.
+    """
+    s = symbol.upper().strip()
+
+    try:
+        # ✅ Use live price from get_market_data if provided
+        if live_price is not None:
+            exit_price = round(float(live_price), 6)
+        else:
+            exit_price = None
+
+        # ------------------------
+        # 1️⃣ STOCKS (YFINANCE)
+        # ------------------------
+        if s in STOCK_SYMBOLS:
+            if exit_price is None:
+                try:
+                    ticker = yf.Ticker(s)
+                    data = ticker.history(period="2d", interval="1h")
+                    if not data.empty:
+                        exit_price = float(data["Close"].iloc[-1])
+                    else:
+                        exit_price = random.uniform(50, 400)
+                except Exception as e:
+                    logger.warning(f"⚠️ yfinance fetch failed for {s}: {e}")
+                    exit_price = random.uniform(50, 400)
+
+        # ------------------------
+        # 2️⃣ CRYPTO (COINBASE → COINGECKO)
+        # ------------------------
+        elif s in CRYPTO_SYMBOLS or s in MEME_COINS:
+            if s in ["NIKY", "DEW"]:
+                # Force simulated for meme-only
+                exit_price = random.uniform(0.0001, 0.05)
+            elif exit_price is None:
+                # Try Coinbase
+                try:
+                    url = f"https://api.coinbase.com/v2/prices/{s}-USD/spot"
+                    r = requests.get(url, timeout=5)
+                    if r.status_code == 200:
+                        exit_price = float(r.json()["data"]["amount"])
+                    else:
+                        raise ValueError("Coinbase no data")
+                except Exception as e:
+                    logger.warning(f"⚠️ Coinbase failed for {s}: {e}")
+                    # CoinGecko fallback
+                    try:
+                        cg_id = CRYPTO_ID_MAP.get(s)
+                        if cg_id:
+                            data = cg.get_price(ids=cg_id, vs_currencies="usd")
+                            exit_price = float(data[cg_id]["usd"])
+                        else:
+                            exit_price = random.uniform(0.001, 500)
+                    except Exception as e:
+                        logger.warning(f"⚠️ CoinGecko failed for {s}: {e}")
+                        exit_price = random.uniform(0.001, 500)
+
+        # ------------------------
+        # 3️⃣ SIMULATED FALLBACK
+        # ------------------------
+        else:
+            exit_price = random.uniform(10, 500)
+
+        # ------------------------
+        # 💹 Compute Entry from ROI
+        # ------------------------
+        entry_price = round(exit_price / (1 + roi / 100.0), 6)
+
+        # Prevent absurd ratios (e.g. exit 3000x entry)
+        if abs(roi) > 800 or entry_price <= 0:
+            entry_price = round(exit_price * random.uniform(0.8, 0.95), 6)
+
+        # ✅ Return final realistic prices
+        return entry_price, round(exit_price, 6)
+
+    except Exception as e:
+        logger.warning(f"⚠️ generate_entry_exit failed for {symbol}: {e}")
+        exit_price = round(random.uniform(10, 500), 6)
+        entry_price = round(exit_price / (1 + roi / 100.0), 6)
+        return entry_price, exit_price
+      
 
 def pick_broker_for_symbol(symbol):
     """Return a realistic broker/exchange name depending on symbol type."""
@@ -319,86 +435,6 @@ def resolve_symbol_for_exchanges(symbol: str):
         "source": "auto"
     }
 
-# =========================
-# 🌐 MARKET DATA FETCHER (AUTO SOURCE)
-# =========================
-def get_market_data(symbol):
-    """
-    Attempts live price data in order:
-      1️⃣ Binance → 2️⃣ Bybit → 3️⃣ CoinGecko → 4️⃣ DEX fallback
-    Returns tuple: (current_price, price_24h_ago, %change_24h)
-    """
-    sym_map = resolve_symbol_for_exchanges(symbol)
-    s = sym_map["symbol"]
-
-    if sym_map["source"] == "simulated":
-        logger.info(f"🎭 {s} is a simulated token (skipping real API).")
-        base_price = random.uniform(0.001, 0.05)
-        pct_change = random.uniform(-5, 15)
-        return (base_price, base_price / (1 + pct_change / 100), pct_change)
-
-    # ------------------------
-    # 1️⃣ Binance API
-    # ------------------------
-    try:
-        url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={sym_map['binance']}"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200 and "lastPrice" in r.json():
-            data = r.json()
-            last_price = float(data["lastPrice"])
-            pct_change = float(data["priceChangePercent"])
-            open_price = last_price / (1 + pct_change / 100)
-            logger.info(f"📊 Binance → {s} @ ${last_price:.4f} ({pct_change:+.2f}%)")
-            return (last_price, open_price, pct_change)
-        else:
-            logger.warning(f"🔁 Binance failed for {s}, falling back...")
-    except Exception as e:
-        logger.warning(f"⚠️ Binance API error for {s}: {e}")
-
-    # ------------------------
-    # 2️⃣ Bybit API
-    # ------------------------
-    try:
-        url = f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={sym_map['bybit']}"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200 and r.json().get("result", {}).get("list"):
-            ticker = r.json()["result"]["list"][0]
-            last_price = float(ticker["lastPrice"])
-            pct_change = float(ticker.get("price24hPcnt", 0)) * 100
-            open_price = last_price / (1 + pct_change / 100)
-            logger.info(f"📈 Bybit → {s} @ ${last_price:.4f} ({pct_change:+.2f}%)")
-            return (last_price, open_price, pct_change)
-        else:
-            logger.warning(f"🔁 Bybit failed for {s}, falling back...")
-    except Exception as e:
-        logger.warning(f"⚠️ Bybit API error for {s}: {e}")
-
-    # ------------------------
-    # 3️⃣ CoinGecko API
-    # ------------------------
-    try:
-        if sym_map["coingecko"]:
-            data = cg.get_price(ids=sym_map["coingecko"], vs_currencies="usd")
-            if sym_map["coingecko"] in data:
-                price = float(data[sym_map["coingecko"]]["usd"])
-                pct_change = random.uniform(-3, 3)
-                open_price = price / (1 + pct_change / 100)
-                logger.info(f"🦎 CoinGecko → {s} @ ${price:.4f} ({pct_change:+.2f}%)")
-                return (price, open_price, pct_change)
-        logger.warning(f"🔁 CoinGecko failed for {s}, falling back...")
-    except Exception as e:
-        logger.warning(f"⚠️ CoinGecko API error for {s}: {e}")
-
-    # ------------------------
-    # 4️⃣ DEX / SIMULATED FALLBACK
-    # ------------------------
-    base_price = random.uniform(0.0001, 50)
-    pct_change = random.uniform(-10, 15)
-    open_price = base_price / (1 + pct_change / 100)
-    logger.info(f"🧩 DEX fallback → {s} ({sym_map['dex_platform']}) @ ${base_price:.4f} ({pct_change:+.2f}%)")
-    return (base_price, open_price, pct_change)
-# ✅ Track last posted category (so posts rotate properly)
-last_category = None
 # ===============================
 # ---- Uniqueness tracking (cooldowns) ----
 used_deposits: dict[int, float] = {}  # value -> last_used_timestamp
