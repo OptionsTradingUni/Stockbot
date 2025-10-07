@@ -1147,81 +1147,68 @@ def _font(size, weight="Regular"):
     except:
         return ImageFont.load_default()
 
+import os
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+# ===============================
+# FUTURISTIC PROFIT CARD GENERATOR (AI BACKGROUND + NEON GLOW)
+# ===============================
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
-    scale = 2
-    W, H = 1200, 450
-    img_w, img_h = W * scale, H * scale
+    """
+    Generates a futuristic-style profit card with your AI-generated background
+    and glowing neon profit text.
+    """
+    # --- File paths ---
+    bg_file = os.path.join("images", "ai_background.png")
+    font_path = os.path.join("fonts", "Inter-Bold.otf")
+    os.makedirs("output", exist_ok=True)
 
-    BG0 = (20, 22, 38)
-    BG1 = (38, 41, 64)
-    TXT = (235, 235, 255)
-    SUB = (150, 155, 180)
-    GREEN = (18, 201, 155)
-    RED = (239, 68, 68)
-    CHIP = (55, 65, 81)
+    # --- Load background ---
+    try:
+        image = Image.open(bg_file).convert("RGBA")
+    except FileNotFoundError:
+        image = Image.new("RGBA", (1280, 720), (10, 10, 20, 255))
 
-    f_light  = _font(28*scale, "Light")
-    f_reg    = _font(32*scale, "Regular")
-    f_med    = _font(40*scale, "Bold")   # slightly heavier for header
-    f_big    = _font(90*scale, "Bold")
-    f_symbol = _font(36*scale, "Bold")
+    # --- Load font ---
+    try:
+        font = ImageFont.truetype(font_path, 180)
+    except OSError:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 180)
 
-    img = Image.new("RGB", (img_w, img_h))
-    draw = ImageDraw.Draw(img)
-    # gradient bg
-    for y in range(img_h):
-        t = y / img_h
-        r = int(BG0[0] + (BG1[0]-BG0[0])*t)
-        g = int(BG0[1] + (BG1[1]-BG0[1])*t)
-        b = int(BG0[2] + (BG1[2]-BG0[2])*t)
-        draw.line([(0,y),(img_w,y)], fill=(r,g,b))
+    W, H = image.size
+    draw = ImageDraw.Draw(image)
 
-    pad = 60*scale
+    # --- Determine colors ---
+    pnl_color = (18, 201, 155) if profit >= 0 else (239, 68, 68)
+    text_prefix = "+" if profit >= 0 else "-"
+    text = f"{text_prefix}${abs(profit):,.0f}  ({roi:+.1f}%)"
+    caption = f"{symbol.upper()} | Deposit ${deposit:,.0f} | {trader_name}"
 
-    # symbol chip
-    d = 80*scale
-    draw.ellipse([(pad,pad),(pad+d,pad+d)], fill=CHIP)
-    draw.text((pad+d/2, pad+d/2), symbol.upper(), fill=TXT, font=f_symbol, anchor="mm")
+    # --- Neon Glow Layer ---
+    glow_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow_layer)
 
-    # trader lines
-    draw.text((pad+d+30*scale, pad+15*scale), trader_name, fill=TXT, font=f_med, anchor="ls")
-    draw.text((pad+d+30*scale, pad+65*scale), "Verified Signal Provider", fill=SUB, font=f_light, anchor="ls")
+    for blur, alpha in [(50, 80), (25, 120), (10, 200)]:
+        tmp = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        tmp_draw = ImageDraw.Draw(tmp)
+        tmp_draw.text((W / 2, H / 2), text, fill=pnl_color + (alpha,), font=font, anchor="mm")
+        tmp = tmp.filter(ImageFilter.GaussianBlur(blur))
+        glow_layer = Image.alpha_composite(glow_layer, tmp)
 
-    # PnL block
-    pnl_color = GREEN if profit >= 0 else RED
-    pnl_prefix = "+" if profit >= 0 else "-"
-    pnl_str = f"{pnl_prefix}${abs(profit):,.2f}"
-    roi_str = f"{roi:+.2f}% ROI"
+    # Merge glow
+    image = Image.alpha_composite(image, glow_layer)
 
-    draw.text((pad, img_h/2 + 10*scale), pnl_str, fill=pnl_color, font=f_big, anchor="ls")
-    w = draw.textlength(pnl_str, font=f_big)
-    draw.text((pad + w + 20*scale, img_h/2 + 20*scale), roi_str, fill=SUB, font=f_med, anchor="ls")
+    # --- Final text (sharp foreground) ---
+    draw = ImageDraw.Draw(image)
+    draw.text((W / 2, H / 2), text, fill=pnl_color, font=font, anchor="mm")
 
-    # simple “area” chart to the right
-    cx, cy = img_w*0.55, pad
-    cw, ch = img_w - cx - pad, img_h - (pad*2)
-    pts = []
-    n = 30
-    for i in range(n):
-        base = ch * (1 - i/(n-1))
-        jitter = random.uniform(-0.15,0.15)*ch
-        y = cy + base + jitter
-        if i == n-1: y = cy + 6  # end high
-        x = cx + (cw/(n-1))*i
-        pts.append((x,y))
-    overlay = Image.new("RGBA", (img_w, img_h), (0,0,0,0))
-    odraw = ImageDraw.Draw(overlay)
-    poly = pts + [(cx+cw, cy+ch), (cx, cy+ch)]
-    odraw.polygon(poly, fill=pnl_color + (60,))
-    odraw.line(pts, fill=pnl_color, width=int(4*scale))
-    img.paste(overlay, (0,0), overlay)
+    # Caption text
+    caption_font = ImageFont.truetype(font_path, 60) if os.path.exists(font_path) else ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 60)
+    draw.text((W / 2, H - 100), caption, fill=(220, 230, 240), font=caption_font, anchor="mm")
 
-    # footer
-    draw.text((pad, img_h - pad), f"Initial Deposit: ${deposit:,.2f}", fill=SUB, font=f_reg, anchor="ls")
-
-    out = img.resize((W,H), Image.Resampling.LANCZOS)
+    # Save to buffer for Telegram send
     buf = io.BytesIO()
-    out.save(buf, format="PNG", quality=95)
+    image.convert("RGB").save(buf, format="PNG", quality=95)
     buf.seek(0)
     return buf
 # ======================
