@@ -89,12 +89,21 @@ def determine_direction(roi, simulated=True):
     return roi, direction
 
 # --- NEW unified helper for real entry/exit ---
-def generate_entry_exit(symbol, roi):
-    """Generate realistic entry & exit prices for any symbol."""
+def generate_entry_exit(symbol, roi, live_price=None):
+    """
+    Generate realistic entry & exit prices for any symbol.
+    If live_price is provided (from get_market_data), reuse it instead of random fallback.
+    """
     symbol_upper = symbol.upper()
 
     try:
-        # 1️⃣ STOCKS → use yfinance
+        # 🟢 1️⃣ Use live price if available
+        if live_price:
+            entry = float(live_price)
+            exit = round(entry * (1 + roi / 100.0), 6)
+            return entry, exit
+
+        # 🟢 2️⃣ STOCKS → use yfinance
         if symbol_upper in STOCK_SYMBOLS:
             stock = yf.Ticker(symbol_upper)
             live_price = stock.info.get("regularMarketPrice")
@@ -104,27 +113,26 @@ def generate_entry_exit(symbol, roi):
             exit = round(entry * (1 + roi / 100.0), 4)
             return entry, exit
 
-        # 2️⃣ CRYPTO → use CoinGecko
+        # 🟢 3️⃣ CRYPTO → use CoinGecko
         elif symbol_upper in CRYPTO_SYMBOLS:
             cg_id = CRYPTO_ID_MAP.get(symbol_upper)
             if cg_id:
                 data = cg.get_price(ids=cg_id, vs_currencies="usd")
                 entry = float(data[cg_id]["usd"])
-                exit = round(entry * (1 + roi / 100.0), 4)
+                exit = round(entry * (1 + roi / 100.0), 6)
                 return entry, exit
 
-        # 3️⃣ MEME COINS (fake / simulated, e.g. NIKY, DEW)
+        # 🟢 4️⃣ MEME COINS (simulated)
         elif symbol_upper in ["NIKY", "DEW"]:
             base = random.uniform(0.0001, 0.05)
             entry = round(base, 6)
             exit = round(entry * (1 + roi / 100.0), 6)
             return entry, exit
 
-        # fallback if symbol not recognized
-        else:
-            entry = round(random.uniform(20, 1000), 2)
-            exit = round(entry * (1 + roi / 100.0), 2)
-            return entry, exit
+        # 🟡 5️⃣ Generic fallback (stocks-style)
+        entry = round(random.uniform(20, 1000), 2)
+        exit = round(entry * (1 + roi / 100.0), 2)
+        return entry, exit
 
     except Exception as e:
         logger.warning(f"⚠️ Failed to fetch entry/exit for {symbol}: {e}")
