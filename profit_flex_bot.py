@@ -1112,7 +1112,7 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
     return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
 
 # ===============================
-# BROKER CARD GENERATOR (NVDA Layout)
+# BROKER CARD GENERATOR (Mary Clark Layout)
 # ===============================
 import io, os, random
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -1129,8 +1129,8 @@ def load_font(font_paths, size):
 
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generates a clean, professional profit card like the NVDA example.
-    Profit and ROI share the same line, chart aligns to the right.
+    Generates the Mary Clark-style broker card:
+    Profit and ROI aligned on same line, profit mid-card, ROI slightly right.
     """
     # --- Layout ---
     W, H = 1400, 600
@@ -1182,30 +1182,30 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     draw.text((pad + circle_d + 40 * scale, pad + 10 * scale), trader_name, fill=TEXT_MAIN, font=font_label, anchor="ls")
     draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Verified Signal Provider", fill=TEXT_SUB, font=font_small, anchor="ls")
 
-    # --- Profit + ROI Section (like NVDA example) ---
+    # --- Profit + ROI Section (Mary Clark Position) ---
     profit_prefix = "+" if profit >= 0 else "-"
     profit_color = GREEN if profit >= 0 else RED
     profit_str = f"{profit_prefix}${abs(profit):,.2f}"
     roi_str = f"{roi:+.2f}% ROI"
 
-    # Starting X closer to left side for balance
-    profit_x = pad * 2.5
-    profit_y = img_h * 0.4
+    # Position — slightly left and lower mid-card
+    profit_x = img_w * 0.20   # 20% from left edge
+    profit_y = img_h * 0.48   # a bit lower than vertical center
 
-    # Glow layer
+    # Glow
     glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
     glow_draw = ImageDraw.Draw(glow)
     glow_draw.text((profit_x, profit_y), profit_str, fill=profit_color + (180,), font=font_title, anchor="ls")
     blurred = glow.filter(ImageFilter.GaussianBlur(radius=25 * scale))
     img.paste(blurred, (0, 0), blurred)
 
-    # Profit Text
+    # Profit text
     draw.text((profit_x, profit_y), profit_str, fill=profit_color, font=font_title, anchor="ls")
 
-    # ROI aligned to right of profit
+    # ROI immediately beside profit
     profit_width = draw.textlength(profit_str, font=font_title)
     roi_x = profit_x + profit_width + (40 * scale)
-    roi_y = profit_y + (20 * scale)
+    roi_y = profit_y + (25 * scale)
     draw.text((roi_x, roi_y), roi_str, fill=TEXT_SUB, font=font_label, anchor="ls")
 
     # --- Chart (Right Side) ---
@@ -1231,7 +1231,7 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     footer = f"Initial Deposit: ${deposit:,.2f}"
     draw.text((pad, img_h - pad + (25 * scale)), footer, fill=TEXT_SUB, font=font_label, anchor="ls")
 
-    # --- Final output ---
+    # --- Final Render ---
     final = img.resize((W, H), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
     final.save(buf, format="PNG", quality=95)
@@ -1243,20 +1243,20 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
 # Example Usage
 # -----------------------------
 if __name__ == "__main__":
-    print("Generating NVDA-style broker card...")
+    print("Generating Mary Clark-style broker card...")
 
     result = generate_profit_card(
-        symbol="NVDA",
-        profit=1870.12,
-        roi=5.55,
-        deposit=2186.00,
-        trader_name="Anthony Thompson"
+        symbol="WIF",
+        profit=16847.37,
+        roi=73.64,
+        deposit=3557.00,
+        trader_name="Mary Clark"
     )
 
-    with open("broker_card_NVDA.png", "wb") as f:
+    with open("broker_card_MaryClark.png", "wb") as f:
         f.write(result.getbuffer())
 
-    print("✅ Saved as 'broker_card_NVDA.png'")
+    print("✅ Saved as 'broker_card_MaryClark.png'")
 # ======================
 # Short caption fallback
 # ======================
