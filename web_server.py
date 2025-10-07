@@ -32,6 +32,32 @@ def home():
     logger.info("Root URL '/' was hit successfully.")
     return "✅ Web Server is running and accessible."
 
+def time_ago(posted_at):
+    """Convert datetime into natural 'time ago' text."""
+    if not posted_at:
+        return "Unknown time"
+    
+    now = datetime.now(timezone.utc)
+    diff = now - posted_at
+
+    seconds = diff.total_seconds()
+    minutes = int(seconds // 60)
+    hours = int(minutes // 60)
+    days = int(hours // 24)
+
+    if seconds < 60:
+        return "just now"
+    elif minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    elif hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    elif days == 1:
+        return "yesterday"
+    elif days < 7:
+        return f"{days} days ago"
+    else:
+        return posted_at.strftime("%b %d, %Y")
+
 # ✅ /api/recent — returns JSON of last 40 trades
 @app.route("/api/recent")
 def recent_trade_logs():
