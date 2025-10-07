@@ -1130,97 +1130,116 @@ def load_font(size, bold=False):
 import requests # Used to download a professional font
 
 # --- Helper function to get a good font (same as before) ---
+# ===============================
+# BROKER CARD GENERATOR (Profit / Loss)
+# ===============================
 import io
 import random
-import requests
 from PIL import Image, ImageDraw, ImageFont
 
-# --- Font Loader (Unchanged but essential) ---
 def get_font(size, weight="Regular"):
-    """Downloads and loads the 'Inter' font from Google Fonts."""
-    # Using a cached local directory is best practice for production
-    font_name = "Inter"
-    url = f"https://rsms.me/inter/font-files/Inter-{weight}.otf"
+    """
+    Load safe local fonts (no downloads needed).
+    """
     try:
-        # Check for font file locally first
-        return ImageFont.truetype(f"Inter-{weight}.otf", size)
-    except IOError:
-        print(f"Downloading Inter-{weight}.otf...")
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            font_content = io.BytesIO(response.content)
-            # Save the font locally to avoid re-downloading
-            with open(f"Inter-{weight}.otf", "wb") as f:
-                f.write(font_content.getbuffer())
-            font_content.seek(0) # Reset buffer position
-            return ImageFont.truetype(font_content, size)
-        except requests.exceptions.RequestException as e:
-            print(f"Warning: Could not download font: {e}. Using default.")
-            return ImageFont.load_default(size)
+        if "Bold" in weight:
+            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+        else:
+            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+    except:
+        return ImageFont.load_default()
 
-# ===============================
-# CLEAN PROFIT CARD GENERATOR
-# ===============================
-def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
+def generate_broker_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Creates a clean, professional profit card.
-    Works entirely offline using system fonts.
+    Generates a professional, broker-style profit or loss image.
+    Perfect for Telegram, TikTok, or auto-posting bots.
     """
-    # Canvas setup
-    W, H = 1080, 720
-    bg_color = (16, 24, 38)
-    text_color = (240, 240, 250)
-    accent_color = (18, 201, 155) if profit >= 0 else (239, 68, 68)
-    secondary = (130, 135, 150)
+    # --- Layout ---
+    scale = 2
+    W, H = 1200, 450
+    img_w, img_h = W * scale, H * scale
 
-    img = Image.new("RGB", (W, H), bg_color)
+    # --- Colors ---
+    BG_GRADIENT_START = (20, 22, 38)     # Dark navy
+    BG_GRADIENT_END = (38, 41, 64)       # Soft gradient
+    TEXT_COLOR = (235, 235, 255)         # Off-white
+    TEXT_SECONDARY = (150, 155, 180)     # Grey
+    PROFIT_COLOR = (18, 201, 155)        # Green
+    LOSS_COLOR = (239, 68, 68)           # Red
+    SYMBOL_BG_COLOR = (55, 65, 81)       # Dark circle
+
+    # --- Fonts ---
+    font_light = get_font(28 * scale, "Light")
+    font_reg = get_font(32 * scale, "Regular")
+    font_med = get_font(40 * scale, "Medium")
+    font_bold = get_font(90 * scale, "Bold")
+    font_symbol = get_font(36 * scale, "Bold")
+
+    # --- Canvas ---
+    img = Image.new("RGB", (img_w, img_h))
     draw = ImageDraw.Draw(img)
 
-    # Load local fonts safely
-    try:
-        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 70)
-        font_main = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 46)
-        font_label = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 36)
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
-    except Exception:
-        font_title = font_main = font_label = font_small = ImageFont.load_default()
+    # Gradient background
+    for y in range(img_h):
+        r = int(BG_GRADIENT_START[0] + (BG_GRADIENT_END[0] - BG_GRADIENT_START[0]) * (y / img_h))
+        g = int(BG_GRADIENT_START[1] + (BG_GRADIENT_END[1] - BG_GRADIENT_START[1]) * (y / img_h))
+        b = int(BG_GRADIENT_START[2] + (BG_GRADIENT_END[2] - BG_GRADIENT_START[2]) * (y / img_h))
+        draw.line([(0, y), (img_w, y)], fill=(r, g, b))
 
-    # Header
-    draw.text((60, 60), f"{symbol} TRADE SUMMARY", fill=text_color, font=font_title)
+    pad = 60 * scale
 
-    # Trader info
-    draw.text((60, 180), f"Trader: {trader_name}", fill=text_color, font=font_main)
-    draw.text((60, 260), f"Deposit: ${deposit:,.2f}", fill=text_color, font=font_main)
+    # --- Header (Symbol Circle + Trader Name) ---
+    circle_d = 80 * scale
+    draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG_COLOR)
+    draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol, fill=TEXT_COLOR, font=font_symbol, anchor="mm")
 
-    # Profit / ROI section
-    profit_prefix = "+" if profit >= 0 else "-"
-    profit_text = f"{profit_prefix}${abs(profit):,.2f}"
-    roi_text = f"{roi:+.2f}% ROI"
+    draw.text((pad + circle_d + 30 * scale, pad + 15 * scale), trader_name, fill=TEXT_COLOR, font=font_med, anchor="ls")
+    draw.text((pad + circle_d + 30 * scale, pad + 65 * scale), "Verified Signal Provider", fill=TEXT_SECONDARY, font=font_light, anchor="ls")
 
-    draw.text((60, 360), f"Result: {profit_text}", fill=accent_color, font=font_title)
-    draw.text((60, 460), f"{roi_text}", fill=text_color, font=font_label)
+    # --- Profit Section ---
+    profit_prefix = "+" if profit >= 0 else ""
+    profit_str = f"{profit_prefix}${abs(profit):,.2f}"
+    roi_str = f"{roi:,.2f}% ROI"
+    profit_fill = PROFIT_COLOR if profit >= 0 else LOSS_COLOR
 
-    # Divider line
-    draw.line((60, 520, W - 60, 520), fill=(70, 80, 100), width=3)
+    draw.text((pad, img_h / 2 + 10 * scale), profit_str, fill=profit_fill, font=font_bold, anchor="ls")
+    profit_w = draw.textlength(profit_str, font=font_bold)
+    draw.text((pad + profit_w + 20 * scale, img_h / 2 + 20 * scale), roi_str, fill=TEXT_SECONDARY, font=font_med, anchor="ls")
 
-    # Timestamp
-    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    draw.text((60, 560), f"Posted: {ts}", fill=secondary, font=font_small)
+    # --- Chart (Right Side) ---
+    chart_x, chart_y = img_w * 0.55, pad
+    chart_w, chart_h = img_w - chart_x - pad, img_h - (pad * 2)
 
-    # Add subtle gradient overlay (optional aesthetic)
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    odraw = ImageDraw.Draw(overlay)
-    for i in range(H):
-        alpha = int(80 * (i / H))  # subtle fade
-        odraw.line((0, i, W, i), fill=(255, 255, 255, alpha))
-    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+    points = []
+    num_points = 30
+    for i in range(num_points):
+        base_height = chart_h * (1 - (i / num_points))
+        volatility = random.uniform(-0.15, 0.15) * chart_h
+        final_y = chart_y + base_height + volatility
+        if i == num_points - 1:
+            final_y = chart_y
+        points.append((chart_x + (chart_w / (num_points - 1)) * i, final_y))
 
-    # Save to in-memory buffer
+    poly_points = points[:] + [(chart_x + chart_w, chart_y + chart_h), (chart_x, chart_y + chart_h)]
+    area_fill = profit_fill + (60,)  # transparent area fill
+
+    overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
+    draw_overlay = ImageDraw.Draw(overlay)
+    draw_overlay.polygon(poly_points, fill=area_fill)
+    draw_overlay.line(points, fill=profit_fill, width=int(4 * scale))
+    img.paste(overlay, (0, 0), overlay)
+
+    # --- Footer ---
+    deposit_text = f"Initial Deposit: ${deposit:,.2f}"
+    draw.text((pad, img_h - pad), deposit_text, fill=TEXT_SECONDARY, font=font_reg, anchor="ls")
+
+    # --- Final Render ---
+    final_img = img.resize((W, H), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
-    img.save(buf, format="PNG", quality=95)
+    final_img.save(buf, format="PNG", quality=95)
     buf.seek(0)
     return buf
+
 # ======================
 # Short caption fallback
 # ======================
