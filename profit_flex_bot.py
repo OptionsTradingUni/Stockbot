@@ -1112,34 +1112,25 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
     return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
 
 # ===============================
-# BROKER CARD GENERATOR (Centered Profit + ROI Right)
+# BROKER CARD GENERATOR (NVDA Layout)
 # ===============================
-
 import io, os, random
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# -----------------------------
-# FONT LOADER
-# -----------------------------
 def load_font(font_paths, size):
-    """Try to load one of your custom OTF fonts in order of preference."""
+    """Try to load custom OTF fonts safely."""
     for path in font_paths:
         if os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size)
             except Exception:
                 continue
-    # fallback (always safe)
     return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
 
-
-# -----------------------------
-# MAIN GENERATOR
-# -----------------------------
-def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
+def generate_broker_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generates a professional, broker-style image.
-    Profit is centered horizontally, ROI fixed to the right.
+    Generates a clean, professional profit card like the NVDA example.
+    Profit and ROI share the same line, chart aligns to the right.
     """
     # --- Layout ---
     W, H = 1400, 600
@@ -1165,7 +1156,6 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
         os.path.join(FONT_DIR, "SF-Pro-Display-Bold.otf"),
         os.path.join(FONT_DIR, "SF-Pro-Display-Regular.otf"),
     ]
-
     font_title = load_font(FONT_OPTIONS, int(100 * scale))
     font_label = load_font(FONT_OPTIONS, int(42 * scale))
     font_small = load_font(FONT_OPTIONS, int(36 * scale))
@@ -1185,43 +1175,38 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
 
     pad = 80 * scale
 
-    # --- Trader Header ---
+    # --- Header (Trader + Symbol) ---
     circle_d = 100 * scale
     draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG)
     draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol.upper(), fill=TEXT_MAIN, font=font_symbol, anchor="mm")
     draw.text((pad + circle_d + 40 * scale, pad + 10 * scale), trader_name, fill=TEXT_MAIN, font=font_label, anchor="ls")
     draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Verified Signal Provider", fill=TEXT_SUB, font=font_small, anchor="ls")
 
-    # --- Profit Section (centered profit + right-aligned ROI) ---
+    # --- Profit + ROI Section (like NVDA example) ---
     profit_prefix = "+" if profit >= 0 else "-"
     profit_color = GREEN if profit >= 0 else RED
     profit_str = f"{profit_prefix}${abs(profit):,.2f}"
     roi_str = f"{roi:+.2f}% ROI"
 
-    # Measure text to center horizontally
-    bbox = draw.textbbox((0, 0), profit_str, font=font_title)
-    profit_w = bbox[2] - bbox[0]
-    profit_h = bbox[3] - bbox[1]
+    # Starting X closer to left side for balance
+    profit_x = pad * 2.5
+    profit_y = img_h * 0.4
 
-    center_x = img_w / 2
-    profit_y = img_h * 0.38  # vertical alignment like your example
-    text_x = center_x - (profit_w / 2)
-    text_y = profit_y - (profit_h / 2)
-
-    # Glow effect
+    # Glow layer
     glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
     glow_draw = ImageDraw.Draw(glow)
-    glow_draw.text((text_x, text_y), profit_str, fill=profit_color + (180,), font=font_title)
+    glow_draw.text((profit_x, profit_y), profit_str, fill=profit_color + (180,), font=font_title, anchor="ls")
     blurred = glow.filter(ImageFilter.GaussianBlur(radius=25 * scale))
     img.paste(blurred, (0, 0), blurred)
 
-    # Main profit text
-    draw.text((text_x, text_y), profit_str, fill=profit_color, font=font_title)
+    # Profit Text
+    draw.text((profit_x, profit_y), profit_str, fill=profit_color, font=font_title, anchor="ls")
 
-    # ROI right side near chart
-    roi_x = img_w * 0.78
-    roi_y = text_y + (20 * scale)
-    draw.text((roi_x, roi_y), roi_str, fill=TEXT_SUB, font=font_label)
+    # ROI aligned to right of profit
+    profit_width = draw.textlength(profit_str, font=font_title)
+    roi_x = profit_x + profit_width + (40 * scale)
+    roi_y = profit_y + (20 * scale)
+    draw.text((roi_x, roi_y), roi_str, fill=TEXT_SUB, font=font_label, anchor="ls")
 
     # --- Chart (Right Side) ---
     chart_x, chart_y = img_w * 0.55, pad
@@ -1258,20 +1243,20 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
 # Example Usage
 # -----------------------------
 if __name__ == "__main__":
-    print("Generating example broker card...")
+    print("Generating NVDA-style broker card...")
 
     result = generate_broker_card(
-        symbol="DOT",
-        profit=18517.08,
-        roi=264.19,
-        deposit=7009.00,
-        trader_name="Amy Ward"
+        symbol="NVDA",
+        profit=1870.12,
+        roi=5.55,
+        deposit=2186.00,
+        trader_name="Anthony Thompson"
     )
 
-    with open("broker_card_centered.png", "wb") as f:
+    with open("broker_card_NVDA.png", "wb") as f:
         f.write(result.getbuffer())
 
-    print("✅ Saved as 'broker_card_centered.png'")
+    print("✅ Saved as 'broker_card_NVDA.png'")
 # ======================
 # Short caption fallback
 # ======================
