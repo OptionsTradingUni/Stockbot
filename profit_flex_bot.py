@@ -1119,14 +1119,9 @@ import os
 import random
 from PIL import Image, ImageDraw, ImageFont
 
-# -------------------------------
-# FONT LOADER
-# -------------------------------
+# --- FONT LOADER ---
 def load_font(font_paths, size):
-    """
-    Try multiple .otf fonts until one loads successfully.
-    Falls back to system DejaVu if none found.
-    """
+    """Try multiple fonts until one loads successfully."""
     for path in font_paths:
         if os.path.exists(path):
             try:
@@ -1137,22 +1132,19 @@ def load_font(font_paths, size):
     return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
 
 
-# -------------------------------
-# MAIN IMAGE GENERATOR
-# -------------------------------
+# --- MAIN FUNCTION ---
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generates a premium broker-style profit/loss card using all your fonts.
-    Perfect for Telegram, TikTok, and promotional flex posts.
+    Clean, professional broker-style profit/loss card.
+    Compatible with Pillow 10+ and looks great for Telegram/TikTok posting.
     """
-
-    # --- Base Layout ---
-    W, H = 1400, 600  # Larger canvas for higher clarity
+    # --- Base layout ---
+    W, H = 1400, 600  # Bigger = sharper on social media
     scale = 2
     img_w, img_h = W * scale, H * scale
     pad = 80 * scale
 
-    # --- Font Paths ---
+    # --- Fonts ---
     FONT_DIR = "fonts"
     FONT_OPTIONS = [
         os.path.join(FONT_DIR, "Inter-Bold.otf"),
@@ -1163,7 +1155,6 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
         os.path.join(FONT_DIR, "SF-Pro-Display-Regular.otf"),
     ]
 
-    # --- Load Fonts (with graceful fallback) ---
     font_title = load_font(FONT_OPTIONS, int(90 * scale))
     font_label = load_font(FONT_OPTIONS, int(40 * scale))
     font_sub = load_font(FONT_OPTIONS, int(34 * scale))
@@ -1182,14 +1173,14 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     img = Image.new("RGB", (img_w, img_h))
     draw = ImageDraw.Draw(img)
 
-    # Gradient Background
+    # Gradient background
     for y in range(img_h):
         r = BG_START[0] + (BG_END[0] - BG_START[0]) * (y / img_h)
         g = BG_START[1] + (BG_END[1] - BG_START[1]) * (y / img_h)
         b = BG_START[2] + (BG_END[2] - BG_START[2]) * (y / img_h)
         draw.line([(0, y), (img_w, y)], fill=(int(r), int(g), int(b)))
 
-    # --- Header Section ---
+    # --- Header (Symbol + Trader Name) ---
     circle_d = 100 * scale
     draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG)
     draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol, fill=TEXT_COLOR, font=font_symbol, anchor="mm")
@@ -1203,20 +1194,23 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     profit_str = f"{profit_prefix}${abs(profit):,.2f}"
     roi_str = f"{roi:+.2f}% ROI"
 
-    # Dynamic alignment
     profit_x = pad
     profit_y = img_h / 2 - (60 * scale)
 
+    # ✅ Use textbbox instead of textsize
+    bbox = draw.textbbox((0, 0), profit_str, font=font_title)
+    profit_w = bbox[2] - bbox[0]
+    profit_h = bbox[3] - bbox[1]
+
     draw.text((profit_x, profit_y), profit_str, fill=profit_color, font=font_title, anchor="ls")
-    profit_w = draw.textlength(profit_str, font=font_title)
     draw.text((profit_x + profit_w + 30 * scale, profit_y + (20 * scale)), roi_str, fill=TEXT_FADE, font=font_label, anchor="ls")
 
-    # --- Chart Simulation ---
+    # --- Chart (Right Side) ---
     chart_x, chart_y = img_w * 0.55, pad
     chart_w, chart_h = img_w - chart_x - pad, img_h - (pad * 2)
 
-    num_points = 35
     points = []
+    num_points = 35
     for i in range(num_points):
         base_height = chart_h * (1 - (i / num_points))
         volatility = random.uniform(-0.12, 0.12) * chart_h
@@ -1234,9 +1228,13 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
 
     # --- Footer ---
     footer_text = f"Initial Deposit: ${deposit:,.2f}"
+
+    footer_bbox = draw.textbbox((0, 0), footer_text, font=font_label)
+    footer_w = footer_bbox[2] - footer_bbox[0]
+
     draw.text((pad, img_h - pad + (25 * scale)), footer_text, fill=TEXT_FADE, font=font_label, anchor="ls")
 
-    # --- Final Render (Downscale for anti-aliasing) ---
+    # --- Final Render ---
     final_img = img.resize((W, H), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
     final_img.save(buf, format="PNG", quality=95)
