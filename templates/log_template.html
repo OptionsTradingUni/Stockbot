@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Trade Log: {{ trade.txid }}</title>
+  <title>Trade Log: {{ log.txid }}</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     body {
@@ -92,7 +92,6 @@
     .highlight {
       font-size: 20px;
       font-weight: 700;
-      color: #22c55e;
     }
     .footer {
       background: #0f172a;
@@ -131,43 +130,49 @@
 <body>
   <div class="card">
     <div class="header">
-      <h1>{{ trade.broker_name or "Verified Exchange" }} — Official Trade Report</h1>
-      <div class="badge">{{ trade.status or "Filled" }}</div>
+      <h1>{{ log.broker_name or "Verified Exchange" }} — Official Trade Report</h1>
+      <div class="badge">{{ log.status or "Filled" }}</div>
     </div>
 
     <div class="section">
       <h2>Trade Overview</h2>
       <div class="grid">
-        <div class="item"><strong>Transaction ID</strong><span>{{ trade.txid }}</span></div>
-        <div class="item"><strong>Asset</strong><span>{{ trade.symbol }}</span></div>
-        <div class="item"><strong>Trader</strong><span>{{ trade.trader_name }}</span></div>
-        <div class="item"><strong>Strategy</strong><span>{{ trade.strategy or "N/A" }}</span></div>
-        <div class="item"><strong>Execution Time</strong><span>{{ trade.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span></div>
+        <div class="item"><strong>Transaction ID</strong><span>{{ log.txid }}</span></div>
+        <div class="item"><strong>Asset</strong><span>{{ log.symbol }}</span></div>
+        <div class="item"><strong>Trader</strong><span>{{ log.trader_name }}</span></div>
+        <div class="item"><strong>Strategy</strong><span>{{ log.strategy or "N/A" }}</span></div>
+        <div class="item"><strong>Posted</strong><span>{{ log.time_ago }}</span></div>
       </div>
     </div>
 
     <div class="section">
       <h2>Performance</h2>
       <div class="grid">
-        <div class="item"><strong>Deposit</strong><span>${{ "%.2f"|format(trade.deposit or 0) }}</span></div>
+        <div class="item"><strong>Deposit</strong><span>${{ "%.2f"|format(log.deposit or 0) }}</span></div>
         <div class="item">
           <strong>Profit / Loss</strong>
-          {% if trade.profit >= 0 %}
-            <span class="highlight profit">+${{ "%.2f"|format(trade.profit) }}</span>
+          {% if log.profit >= 0 %}
+            <span class="highlight profit">+${{ "%.2f"|format(log.profit) }}</span>
           {% else %}
-            <span class="highlight loss">-${{ "%.2f"|format(trade.profit|abs) }}</span>
+            <span class="highlight loss">-${{ "%.2f"|format(log.profit|abs) }}</span>
           {% endif %}
         </div>
-        <div class="item"><strong>ROI</strong><span>{{ "%.2f"|format(trade.roi or 0) }}%</span></div>
-        <div class="item"><strong>Trade Direction</strong><span>{{ trade.direction }}</span></div>
+        <div class="item"><strong>ROI</strong>
+          {% if log.roi >= 0 %}
+            <span class="profit">{{ "%.2f"|format(log.roi or 0) }}%</span>
+          {% else %}
+            <span class="loss">{{ "%.2f"|format(log.roi or 0) }}%</span>
+          {% endif %}
+        </div>
+        <div class="item"><strong>Trade Direction</strong><span>{{ log.direction or "Bullish" }}</span></div>
       </div>
     </div>
 
-    {% if trade.reason %}
+    {% if log.reason %}
     <div class="section">
       <h2>Trade Reasoning</h2>
       <p style="color:#f3f4f6; font-size:15px; line-height:1.6;">
-        {{ trade.reason }}
+        {{ log.reason }}
       </p>
     </div>
     {% endif %}
@@ -175,18 +180,18 @@
     <div class="section">
       <h2>Execution Metrics</h2>
       <div class="grid">
-        <div class="item"><strong>Entry Price</strong><span>${{ "%.4f"|format(trade.entry_price or 0) }}</span></div>
-        <div class="item"><strong>Exit Price</strong><span>${{ "%.4f"|format(trade.exit_price or 0) }}</span></div>
-        <div class="item"><strong>Quantity</strong><span>{{ "%.6f"|format(trade.quantity or 1.0) }}</span></div>
-        <div class="item"><strong>Fees / Commission</strong><span>${{ "%.2f"|format(trade.commission or 0) }}</span></div>
-        <div class="item"><strong>Slippage</strong><span>{{ "%.4f"|format(trade.slippage or 0) }}%</span></div>
+        <div class="item"><strong>Entry Price</strong><span>${{ "%.4f"|format(log.entry_price or 0) }}</span></div>
+        <div class="item"><strong>Exit Price</strong><span>${{ "%.4f"|format(log.exit_price or 0) }}</span></div>
+        <div class="item"><strong>Quantity</strong><span>{{ "%.6f"|format(log.quantity or 1.0) }}</span></div>
+        <div class="item"><strong>Fees / Commission</strong><span>${{ "%.2f"|format(log.commission or 0) }}</span></div>
+        <div class="item"><strong>Slippage</strong><span>{{ "%.4f"|format(log.slippage or 0) }}%</span></div>
       </div>
     </div>
 
     <div class="footer">
       ✅ Verified & recorded by <b>Options Trading University</b><br>
       <div class="seal">
-        This on-chain / broker-synced trade report is auto-generated from the Profit Flex Bot.<br>
+        This on-chain / broker-synced trade report is auto-generated by the Profit Flex Bot.<br>
       </div>
     </div>
   </div>
@@ -199,7 +204,7 @@
 
   <script>
   // ✅ Fetch and display the 30–40 most recent logs dynamically
-  fetch("https://logs.optionstradinguni.online/api/recent")
+  fetch("/api/recent")
     .then(res => res.json())
     .then(data => {
       const container = document.getElementById("logs-container");
@@ -212,13 +217,12 @@
         <div>
           <strong style="color:#f9fafb;">${log.symbol}</strong> — 
           <span style="color:#9ca3af;">${log.broker_name}</span><br>
-          💰 <b style="color:#22c55e;">$${log.profit.toFixed(2)}</b> 
+          💰 <b style="color:${log.profit >= 0 ? '#22c55e' : '#ef4444'};">
+          ${log.profit >= 0 ? '+' : '-'}$${Math.abs(log.profit).toFixed(2)}</b> 
           (<span style="color:#38bdf8;">${log.roi.toFixed(2)}%</span>)<br>
           👤 ${log.trader_name} | 
-          <small style="color:#9ca3af;">${new Date(log.posted_at).toLocaleString()}</small><br>
-          <a href="https://logs.optionstradinguni.online/log/${log.txid}" 
-             target="_blank" 
-             style="color:#3b82f6; text-decoration:none;">🔗 View Log →</a>
+          <small style="color:#9ca3af;">${log.time_ago || new Date(log.posted_at).toLocaleString()}</small><br>
+          <a href="/log/${log.txid}" target="_blank" style="color:#3b82f6; text-decoration:none;">🔗 View Log →</a>
         </div>
       `).join("");
     })
