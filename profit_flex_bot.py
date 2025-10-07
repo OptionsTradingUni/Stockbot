@@ -1114,35 +1114,44 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
 # ===============================
 # ADVANCED BROKER CARD GENERATOR (with multi-font + perfect alignment)
 # ===============================
-import io
-import os
-import random
-from PIL import Image, ImageDraw, ImageFont
+import io, os, random
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# --- FONT LOADER ---
+# -----------------------------
+# FONT LOADER
+# -----------------------------
 def load_font(font_paths, size):
-    """Try multiple fonts until one loads successfully."""
+    """Try to load one of your custom OTF fonts in order of preference."""
     for path in font_paths:
         if os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size)
             except Exception:
                 continue
-    # fallback
+    # fallback (always safe)
     return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
 
 
-# --- MAIN FUNCTION ---
+# -----------------------------
+# MAIN GENERATOR
+# -----------------------------
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Clean, professional broker-style profit/loss card.
-    Compatible with Pillow 10+ and looks great for Telegram/TikTok posting.
+    Generates a premium broker-style image (centered text, neon glow, Pillow-10+ safe).
     """
-    # --- Base layout ---
-    W, H = 1400, 600  # Bigger = sharper on social media
+    # --- Layout ---
+    W, H = 1400, 600
     scale = 2
     img_w, img_h = W * scale, H * scale
-    pad = 80 * scale
+
+    # --- Colors ---
+    BG_TOP = (15, 18, 32)
+    BG_BOTTOM = (28, 32, 52)
+    TEXT_MAIN = (235, 235, 245)
+    TEXT_SUB = (150, 155, 170)
+    GREEN = (18, 201, 155)
+    RED = (239, 68, 68)
+    SYMBOL_BG = (45, 55, 75)
 
     # --- Fonts ---
     FONT_DIR = "fonts"
@@ -1155,89 +1164,88 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
         os.path.join(FONT_DIR, "SF-Pro-Display-Regular.otf"),
     ]
 
-    font_title = load_font(FONT_OPTIONS, int(90 * scale))
-    font_label = load_font(FONT_OPTIONS, int(40 * scale))
-    font_sub = load_font(FONT_OPTIONS, int(34 * scale))
-    font_symbol = load_font(FONT_OPTIONS, int(42 * scale))
+    font_main = load_font(FONT_OPTIONS, int(100 * scale))
+    font_roi = load_font(FONT_OPTIONS, int(44 * scale))
+    font_label = load_font(FONT_OPTIONS, int(36 * scale))
+    font_symbol = load_font(FONT_OPTIONS, int(46 * scale))
 
-    # --- Colors ---
-    BG_START = (15, 18, 32)
-    BG_END = (30, 34, 54)
-    TEXT_COLOR = (230, 230, 240)
-    TEXT_FADE = (150, 155, 180)
-    PROFIT_COLOR = (18, 201, 155)
-    LOSS_COLOR = (239, 68, 68)
-    SYMBOL_BG = (50, 60, 80)
-
-    # --- Create Canvas ---
+    # --- Canvas ---
     img = Image.new("RGB", (img_w, img_h))
     draw = ImageDraw.Draw(img)
 
     # Gradient background
     for y in range(img_h):
-        r = BG_START[0] + (BG_END[0] - BG_START[0]) * (y / img_h)
-        g = BG_START[1] + (BG_END[1] - BG_START[1]) * (y / img_h)
-        b = BG_START[2] + (BG_END[2] - BG_START[2]) * (y / img_h)
-        draw.line([(0, y), (img_w, y)], fill=(int(r), int(g), int(b)))
+        t = y / img_h
+        r = int(BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * t)
+        g = int(BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * t)
+        b = int(BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t)
+        draw.line([(0, y), (img_w, y)], fill=(r, g, b))
 
-    # --- Header (Symbol + Trader Name) ---
+    pad = 80 * scale
+
+    # --- Trader Header ---
     circle_d = 100 * scale
     draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG)
-    draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol, fill=TEXT_COLOR, font=font_symbol, anchor="mm")
+    draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol.upper(), fill=TEXT_MAIN, font=font_symbol, anchor="mm")
+    draw.text((pad + circle_d + 40 * scale, pad + 10 * scale), trader_name, fill=TEXT_MAIN, font=font_label, anchor="ls")
+    draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Verified Signal Provider", fill=TEXT_SUB, font=font_label, anchor="ls")
 
-    draw.text((pad + circle_d + 40 * scale, pad + 10 * scale), trader_name, fill=TEXT_COLOR, font=font_label, anchor="ls")
-    draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Verified Signal Provider", fill=TEXT_FADE, font=font_sub, anchor="ls")
-
-    # --- Profit Section ---
+    # --- Profit Section (centered) ---
     profit_prefix = "+" if profit >= 0 else "-"
-    profit_color = PROFIT_COLOR if profit >= 0 else LOSS_COLOR
+    color = GREEN if profit >= 0 else RED
     profit_str = f"{profit_prefix}${abs(profit):,.2f}"
     roi_str = f"{roi:+.2f}% ROI"
 
-    profit_x = pad
-    profit_y = img_h / 2 - (60 * scale)
-
-    # ✅ Use textbbox instead of textsize
-    bbox = draw.textbbox((0, 0), profit_str, font=font_title)
+    # Measure for centering
+    bbox = draw.textbbox((0, 0), profit_str, font=font_main)
     profit_w = bbox[2] - bbox[0]
     profit_h = bbox[3] - bbox[1]
 
-    draw.text((profit_x, profit_y), profit_str, fill=profit_color, font=font_title, anchor="ls")
-    draw.text((profit_x + profit_w + 30 * scale, profit_y + (20 * scale)), roi_str, fill=TEXT_FADE, font=font_label, anchor="ls")
+    center_x = img_w / 2
+    center_y = img_h * 0.38  # slightly higher (like your screenshot)
+    text_x = center_x - (profit_w / 2)
+    text_y = center_y - (profit_h / 2)
 
-    # --- Chart (Right Side) ---
+    # Glow layer
+    glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    glow_draw.text((text_x, text_y), profit_str, fill=color + (180,), font=font_main, anchor="lt")
+    blurred = glow.filter(ImageFilter.GaussianBlur(radius=25 * scale))
+    img.paste(blurred, (0, 0), blurred)
+
+    # Draw main text
+    draw.text((text_x, text_y), profit_str, fill=color, font=font_main, anchor="lt")
+
+    # ROI label (offset to right)
+    draw.text((text_x + profit_w + 40 * scale, text_y + (20 * scale)), roi_str, fill=TEXT_SUB, font=font_roi, anchor="ls")
+
+    # --- Chart (Right) ---
     chart_x, chart_y = img_w * 0.55, pad
     chart_w, chart_h = img_w - chart_x - pad, img_h - (pad * 2)
-
     points = []
-    num_points = 35
-    for i in range(num_points):
-        base_height = chart_h * (1 - (i / num_points))
-        volatility = random.uniform(-0.12, 0.12) * chart_h
-        final_y = chart_y + base_height + volatility
-        if i == num_points - 1:
-            final_y = chart_y
-        points.append((chart_x + (chart_w / (num_points - 1)) * i, final_y))
+    for i in range(35):
+        base = chart_h * (1 - (i / 35))
+        jitter = random.uniform(-0.12, 0.12) * chart_h
+        y = chart_y + base + jitter
+        if i == 34:
+            y = chart_y
+        x = chart_x + (chart_w / 34) * i
+        points.append((x, y))
 
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    draw_overlay = ImageDraw.Draw(overlay)
-    fill_color = profit_color + (60,)
-    draw_overlay.polygon(points + [(chart_x + chart_w, chart_y + chart_h), (chart_x, chart_y + chart_h)], fill=fill_color)
-    draw_overlay.line(points, fill=profit_color, width=int(5 * scale))
+    d = ImageDraw.Draw(overlay)
+    d.polygon(points + [(chart_x + chart_w, chart_y + chart_h), (chart_x, chart_y + chart_h)], fill=color + (55,))
+    d.line(points, fill=color, width=int(5 * scale))
     img.paste(overlay, (0, 0), overlay)
 
     # --- Footer ---
-    footer_text = f"Initial Deposit: ${deposit:,.2f}"
+    footer = f"Initial Deposit: ${deposit:,.2f}"
+    draw.text((pad, img_h - pad + (25 * scale)), footer, fill=TEXT_SUB, font=font_roi, anchor="ls")
 
-    footer_bbox = draw.textbbox((0, 0), footer_text, font=font_label)
-    footer_w = footer_bbox[2] - footer_bbox[0]
-
-    draw.text((pad, img_h - pad + (25 * scale)), footer_text, fill=TEXT_FADE, font=font_label, anchor="ls")
-
-    # --- Final Render ---
-    final_img = img.resize((W, H), Image.Resampling.LANCZOS)
+    # --- Final output ---
+    final = img.resize((W, H), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
-    final_img.save(buf, format="PNG", quality=95)
+    final.save(buf, format="PNG", quality=95)
     buf.seek(0)
     return buf
 # ======================
