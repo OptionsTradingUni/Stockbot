@@ -1159,142 +1159,68 @@ def get_font(size, weight="Regular"):
             print(f"Warning: Could not download font: {e}. Using default.")
             return ImageFont.load_default(size)
 
+# ===============================
+# CLEAN PROFIT CARD GENERATOR
+# ===============================
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generates a professional, broker-style profit card image.
+    Creates a clean, professional profit card.
+    Works entirely offline using system fonts.
     """
-    # --- 1. High-Level Design & Scaling ---
-    # We will render the image at 2x resolution and scale down for anti-aliasing
-    scale = 2
-    W, H = 1200, 450
-    img_w, img_h = W * scale, H * scale
+    # Canvas setup
+    W, H = 1080, 720
+    bg_color = (16, 24, 38)
+    text_color = (240, 240, 250)
+    accent_color = (18, 201, 155) if profit >= 0 else (239, 68, 68)
+    secondary = (130, 135, 150)
 
-    # --- 2. Enhanced Color Palette ---
-    BG_GRADIENT_START = (20, 22, 38)   # Dark Navy Blue
-    BG_GRADIENT_END = (38, 41, 64)     # Lighter Navy Blue
-    TEXT_COLOR = (235, 235, 255)       # Off-white
-    TEXT_SECONDARY = (150, 155, 180)   # Greyish
-    PROFIT_COLOR = (18, 201, 155)      # Teal Green
-    LOSS_COLOR = (239, 68, 68)         # Red
-    SYMBOL_BG_COLOR = (55, 65, 81)     # Grey for the logo circle
-
-    # --- 3. Load Fonts with Various Weights ---
-    try:
-        font_light = get_font(28 * scale, "Light")
-        font_reg = get_font(32 * scale, "Regular")
-        font_med = get_font(40 * scale, "Medium")
-        font_bold = get_font(90 * scale, "Bold")
-        font_symbol = get_font(36 * scale, "Bold")
-    except Exception as e:
-        print(f"Error loading fonts: {e}")
-        return None
-
-    # --- 4. Setup Canvas ---
-    img = Image.new("RGB", (img_w, img_h))
+    img = Image.new("RGB", (W, H), bg_color)
     draw = ImageDraw.Draw(img)
 
-    # Draw Gradient Background
-    for y in range(img_h):
-        r = int(BG_GRADIENT_START[0] + (BG_GRADIENT_END[0] - BG_GRADIENT_START[0]) * (y / img_h))
-        g = int(BG_GRADIENT_START[1] + (BG_GRADIENT_END[1] - BG_GRADIENT_START[1]) * (y / img_h))
-        b = int(BG_GRADIENT_START[2] + (BG_GRADIENT_END[2] - BG_GRADIENT_START[2]) * (y / img_h))
-        draw.line([(0, y), (img_w, y)], fill=(r, g, b))
+    # Load local fonts safely
+    try:
+        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 70)
+        font_main = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 46)
+        font_label = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 36)
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
+    except Exception:
+        font_title = font_main = font_label = font_small = ImageFont.load_default()
 
-    # --- 5. Draw Content ---
-    pad = 60 * scale
+    # Header
+    draw.text((60, 60), f"{symbol} TRADE SUMMARY", fill=text_color, font=font_title)
 
-    # A. Header Section (Logo and Trader)
-    # Circle for Symbol
-    circle_d = 80 * scale
-    draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG_COLOR)
-    draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol, fill=TEXT_COLOR, font=font_symbol, anchor="mm")
+    # Trader info
+    draw.text((60, 180), f"Trader: {trader_name}", fill=text_color, font=font_main)
+    draw.text((60, 260), f"Deposit: ${deposit:,.2f}", fill=text_color, font=font_main)
 
-    # Trader Name
-    draw.text((pad + circle_d + 30 * scale, pad + 15 * scale), trader_name, fill=TEXT_COLOR, font=font_med, anchor="ls")
-    draw.text((pad + circle_d + 30 * scale, pad + 65 * scale), "Verified Signal Provider", fill=TEXT_SECONDARY, font=font_light, anchor="ls")
+    # Profit / ROI section
+    profit_prefix = "+" if profit >= 0 else "-"
+    profit_text = f"{profit_prefix}${abs(profit):,.2f}"
+    roi_text = f"{roi:+.2f}% ROI"
 
-    # B. Main KPI Section (Profit and ROI)
-    profit_prefix = "+" if profit >= 0 else ""
-    profit_str = f"{profit_prefix}${abs(profit):,.2f}"
-    roi_str = f"{roi:,.2f}% ROI"
-    profit_fill = PROFIT_COLOR if profit >= 0 else LOSS_COLOR
+    draw.text((60, 360), f"Result: {profit_text}", fill=accent_color, font=font_title)
+    draw.text((60, 460), f"{roi_text}", fill=text_color, font=font_label)
 
-    draw.text((pad, img_h / 2 + 10 * scale), profit_str, fill=profit_fill, font=font_bold, anchor="ls")
-    # Position ROI text relative to the profit text
-    profit_w = draw.textlength(profit_str, font=font_bold)
-    draw.text((pad + profit_w + 20 * scale, img_h / 2 + 20 * scale), roi_str, fill=TEXT_SECONDARY, font=font_med, anchor="ls")
+    # Divider line
+    draw.line((60, 520, W - 60, 520), fill=(70, 80, 100), width=3)
 
-    # C. Chart Section (Right side)
-    chart_x, chart_y = img_w * 0.55, pad
-    chart_w, chart_h = img_w - chart_x - pad, img_h - (pad * 2)
+    # Timestamp
+    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    draw.text((60, 560), f"Posted: {ts}", fill=secondary, font=font_small)
 
-    # Generate points for an upward-trending chart
-    points = []
-    num_points = 30
-    for i in range(num_points):
-        base_height = chart_h * (1 - (i / num_points)) # Start high (y=0 is top), go low
-        volatility = random.uniform(-0.15, 0.15) * chart_h
-        final_y = chart_y + base_height + volatility
-        # Ensure the last point is the lowest (highest on chart)
-        if i == num_points - 1:
-            final_y = chart_y
-        points.append((chart_x + (chart_w / (num_points - 1)) * i, final_y))
+    # Add subtle gradient overlay (optional aesthetic)
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    odraw = ImageDraw.Draw(overlay)
+    for i in range(H):
+        alpha = int(80 * (i / H))  # subtle fade
+        odraw.line((0, i, W, i), fill=(255, 255, 255, alpha))
+    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
-    # Create the polygon for the area fill
-    poly_points = points[:]
-    poly_points.append((chart_x + chart_w, chart_y + chart_h))
-    poly_points.append((chart_x, chart_y + chart_h))
-    
-    # Create a semi-transparent fill color
-    area_fill = profit_fill + (60,) # Add alpha for transparency
-    
-    # Draw area and line on a temporary transparent layer to handle transparency
-    overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
-    draw_overlay = ImageDraw.Draw(overlay)
-    draw_overlay.polygon(poly_points, fill=area_fill)
-    draw_overlay.line(points, fill=profit_fill, width=int(4 * scale), joint="curve")
-    img.paste(overlay, (0, 0), overlay)
-
-    # D. Footer Text
-    deposit_text = f"Initial Deposit: ${deposit:,.2f}"
-    draw.text((pad, img_h - pad), deposit_text, fill=TEXT_SECONDARY, font=font_reg, anchor="ls")
-
-    # --- 6. Finalize: Scale Down and Save to Buffer ---
-    final_img = img.resize((W, H), Image.Resampling.LANCZOS)
-
+    # Save to in-memory buffer
     buf = io.BytesIO()
-    final_img.save(buf, format="PNG", quality=95)
+    img.save(buf, format="PNG", quality=95)
     buf.seek(0)
     return buf
-
-# --- Example Usage ---
-if __name__ == '__main__':
-    print("Generating profit card for BTC...")
-    btc_card = generate_broker_card(
-        symbol="BTC",
-        profit=8450.75,
-        roi=604.2,
-        deposit=1400.00,
-        trader_name="Robert Garcia"
-    )
-    if btc_card:
-        with open("btc_broker_card.png", "wb") as f:
-            f.write(btc_card.getbuffer())
-        print("✅ Saved 'btc_broker_card.png'")
-        
-        # Example of a loss
-        print("\nGenerating loss card for TSLA...")
-        tsla_card = generate_broker_card(
-            symbol="TSLA",
-            profit=-1230.50,
-            roi=-12.3,
-            deposit=10000.00,
-            trader_name="OptionsAI"
-        )
-        with open("tsla_broker_card.png", "wb") as f:
-            f.write(tsla_card.getbuffer())
-        print("✅ Saved 'tsla_broker_card.png'")
-
 # ======================
 # Short caption fallback
 # ======================
