@@ -135,19 +135,18 @@
     </div>
 
     <div class="section">
-      <h2>Trade Overview</h2>
-      <div class="grid">
-        <div class="item"><strong>Transaction ID</strong><span>{{ log.txid }}</span></div>
-        <div class="item"><strong>Asset</strong><span>{{ log.symbol }}</span></div>
-        <div class="item"><strong>Trader</strong><span>{{ log.trader_name }}</span></div>
-        <div class="item"><strong>Strategy</strong><span>{{ log.strategy or "N/A" }}</span></div>
-        <div class="item">
-  <strong>Posted</strong>
-  <span>
-    {{ log.time_ago }}
-  </span>
-</div>
+  <h2>Trade Overview</h2>
+  <div class="grid">
+    <div class="item"><strong>Transaction ID</strong><span>{{ log.txid }}</span></div>
+    <div class="item"><strong>Asset</strong><span>{{ log.symbol }}</span></div>
+    <div class="item"><strong>Trader</strong><span>{{ log.trader_name }}</span></div>
+    <div class="item"><strong>Strategy</strong><span>{{ log.strategy or "N/A" }}</span></div>
+    <div class="item">
+      <strong>Posted</strong>
+      <span>{{ log.time_ago }}</span>
     </div>
+  </div>
+</div> <!-- ✅ close this section -->
 
     <div class="section">
       <h2>Performance</h2>
