@@ -32,6 +32,39 @@ def home():
     logger.info("Root URL '/' accessed successfully.")
     return "✅ Web Server is running and accessible."
 
+
+# ----------------------------------------------------------------------
+# /profit — Page to display the 100 most recent trades
+# ----------------------------------------------------------------------
+@app.route("/profit")
+def profit_page():
+    """Render a page showing the 100 most recent trades."""
+    try:
+        with engine.connect() as conn:
+            # Query for the last 100 trades
+            query = text("""
+                SELECT txid, symbol, trader_name, profit, roi, posted_at
+                FROM trade_logs
+                ORDER BY posted_at DESC
+                LIMIT 100
+            """)
+            rows = conn.execute(query).mappings().all()
+
+        # Process rows to add the 'time_ago' string
+        trades_data = []
+        for row in rows:
+            trade = dict(row) # Convert to a mutable dictionary
+            posted_at = trade.get("posted_at")
+            trade["time_ago"] = time_ago(posted_at) if posted_at else "Unknown time"
+            trades_data.append(trade)
+
+        # Render the new template with the trade data
+        return render_template("profit.html", trades=trades_data)
+
+    except Exception as e:
+        logger.error(f"⚠️ Error fetching /profit page: {e}", exc_info=True)
+        return "<h2>500 - Could not load trade data</h2>", 500
+        
 # ----------------------------------------------------------------------
 # Helper: Time-ago formatting
 # ----------------------------------------------------------------------
