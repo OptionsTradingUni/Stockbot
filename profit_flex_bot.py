@@ -1229,6 +1229,9 @@ def profit_status_labels(profit: float):
 # ===============================
 # AUTO PROFIT POSTING LOOP (REAL + SIMULATED FIX)
 # ===============================
+# ===============================
+# AUTO PROFIT POSTING LOOP (REAL + SIMULATED FIX)
+# ===============================
 async def profit_posting_loop(app):
     logger.info("🚀 Profit posting loop started (70% simulated / 30% real).")
     while True:
@@ -1286,13 +1289,14 @@ async def profit_posting_loop(app):
                 quantity=quantity, commission=commission, slippage=slippage, direction=direction
             )
 
-                status_emoji, profit_label = profit_status_labels(profit)
+            # ✅ FIXED indentation (was too deep before)
+            status_emoji, profit_label = profit_status_labels(profit)
 
             msg = (
                 f"{post_title}\n"
                 f"👤 Trader: <b>{trader_name}</b>\n"
                 f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
-                f"f"{status_emoji} <b>{profit_label}:</b> ":</b> <b>${abs(profit):,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+                f"{status_emoji} <b>{profit_label}:</b> <b>${abs(profit):,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
                 f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
                 f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
                 f"🔥 Strategy: <b>{trading_style}</b> — {reason}\n\n"
@@ -1317,6 +1321,9 @@ async def profit_posting_loop(app):
             await asyncio.sleep(60)
 
 
+# ===============================
+# MANUAL POST HANDLER (REAL + SIMULATED FIX)
+# ===============================
 # ===============================
 # MANUAL POST HANDLER (REAL + SIMULATED FIX)
 # ===============================
@@ -1373,13 +1380,15 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             reason=reason, entry_price=entry_price, exit_price=exit_price,
             quantity=quantity, commission=commission, slippage=slippage, direction=direction
         )
-            status_emoji, profit_label = profit_status_labels(profit)
+
+        # ✅ FIXED indentation (was causing error)
+        status_emoji, profit_label = profit_status_labels(profit)
 
         msg = (
             f"{post_title}\n"
             f"👤 Trader: <b>{trader_name}</b>\n"
             f"💰 Deposit: <b>${deposit:,.2f}</b>\n"
-            f"f"{status_emoji} <b>{profit_label}:</b> ":</b> <b>${abs(profit):,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
+            f"{status_emoji} <b>{profit_label}:</b> <b>${abs(profit):,.2f}</b> (<b>{roi:+.2f}%</b>)\n"
             f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
             f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
             f"🔥 Strategy: <b>{trading_style}</b> — {reason}\n\n"
