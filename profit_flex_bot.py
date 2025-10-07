@@ -1237,9 +1237,6 @@ def profit_status_labels(profit: float):
 # ===============================
 # AUTO PROFIT POSTING LOOP (REAL + SIMULATED FIX)
 # ===============================
-# ===============================
-# AUTO PROFIT POSTING LOOP (REAL + SIMULATED FIX)
-# ===============================
 async def profit_posting_loop(app):
     logger.info("🚀 Profit posting loop started (70% simulated / 30% real).")
     while True:
@@ -1252,27 +1249,29 @@ async def profit_posting_loop(app):
 
             for attempt in range(5):
                 # 🔹 Try to fetch live market data
-                market_data = get_market_data(symbol)
-                if market_data:
-                    current_price, price_24h_ago, pct_change_24h = market_data
-                    if not use_simulated and abs(pct_change_24h) >= 0.2:
-                        # Real trade mode
-                        deposit = random.randint(500, 5000)
-                        roi = pct_change_24h
-                        profit = round(deposit * (roi / 100.0), 2)
-                        entry_price = round(current_price / (1 + roi / 100), 4)
-                        exit_price = round(current_price, 4)
-                        direction = "Bullish" if roi >= 0 else "Bearish"
-                        reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move."
-                        trading_style = "Market Analysis"
-                        post_title = f"📈 <b>{symbol} Live Market Report</b>"
-                        break
-                    else:
-                        use_simulated = True
+                try:
+                    current_price, price_24h_ago, pct_change_24h = get_market_data(symbol)
+                    exit_price = round(float(current_price), 6)  # ✅ real, live exit
+                except Exception:
+                    exit_price = round(random.uniform(1, 500), 6)  # fallback
+
+                if not use_simulated and abs(pct_change_24h) >= 0.2:
+                    # Real trade mode
+                    deposit = random.randint(500, 5000)
+                    roi = pct_change_24h
+                    profit = round(deposit * (roi / 100.0), 2)
+                    entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
+                    direction = "Bullish" if roi >= 0 else "Bearish"
+                    reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move."
+                    trading_style = "Market Analysis"
+                    post_title = f"📈 <b>{symbol} Live Market Report</b>"
+                    break
+                else:
+                    use_simulated = True
 
                 if use_simulated:
                     deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
-                    entry_price, exit_price = generate_entry_exit(symbol, roi)
+                    entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
                     post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                     break
             else:
@@ -1327,11 +1326,6 @@ async def profit_posting_loop(app):
         except Exception as e:
             logger.error(f"Error in posting loop: {e}", exc_info=True)
             await asyncio.sleep(60)
-
-
-# ===============================
-# MANUAL POST HANDLER (REAL + SIMULATED FIX)
-# ===============================
 # ===============================
 # MANUAL POST HANDLER (REAL + SIMULATED FIX)
 # ===============================
@@ -1347,26 +1341,30 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         use_simulated = random.random() < 0.7
 
         for attempt in range(5):
-            market_data = get_market_data(symbol)
-            if market_data:
-                current_price, price_24h_ago, pct_change_24h = market_data
-                if not use_simulated and abs(pct_change_24h) >= 0.2:
-                    deposit = random.randint(500, 5000)
-                    roi = pct_change_24h
-                    profit = round(deposit * (roi / 100.0), 2)
-                    entry_price = round(current_price / (1 + roi / 100), 4)
-                    exit_price = round(current_price, 4)
-                    direction = "Bullish" if roi >= 0 else "Bearish"
-                    reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move."
-                    trading_style = "Market Analysis"
-                    post_title = f"📈 <b>{symbol} Live Market Report</b>"
-                    break
-                else:
-                    use_simulated = True
+            # 🔹 Try to fetch live market data
+            try:
+                current_price, price_24h_ago, pct_change_24h = get_market_data(symbol)
+                exit_price = round(float(current_price), 6)  # ✅ real, live exit
+            except Exception:
+                exit_price = round(random.uniform(1, 500), 6)  # fallback
+
+            if not use_simulated and abs(pct_change_24h) >= 0.2:
+                # Real trade mode
+                deposit = random.randint(500, 5000)
+                roi = pct_change_24h
+                profit = round(deposit * (roi / 100.0), 2)
+                entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
+                direction = "Bullish" if roi >= 0 else "Bearish"
+                reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move."
+                trading_style = "Market Analysis"
+                post_title = f"📈 <b>{symbol} Live Market Report</b>"
+                break
+            else:
+                use_simulated = True
 
             if use_simulated:
                 deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
-                entry_price, exit_price = generate_entry_exit(symbol, roi)
+                entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
                 post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                 break
         else:
@@ -1417,72 +1415,6 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Manual post error: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Failed: {e}")
-# /start handler with Top 3 Rankings
-# ================================
-
-async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user = update.effective_user
-    name = user.first_name or user.username or "Trader"
-
-    # ✅ Alert admin that user interacted
-    await alert_admin_user_action(update, "/start command")
-
-    # ✅ Get leaderboard (cached or rebuilt if needed)
-    social_lines = fetch_cached_rankings()  # returns sorted list
-    top3 = "\n".join(social_lines[:3]) if social_lines else "No rankings yet."
-
-    # Pick a random success story index
-    total_stories = len(TRADER_STORIES["male"]) + len(TRADER_STORIES["female"])
-    random_index = random.randint(0, total_stories - 1)
-
-    # Inline buttons
-    keyboard = [
-        [InlineKeyboardButton("📊 Full Rankings", callback_data="rankings"),
-         InlineKeyboardButton("📖 Success Stories", callback_data=f"success_any_{random_index}")],
-        [InlineKeyboardButton("📢 Join Profit Group", url="https://t.me/+v2cZ4q1DXNdkMjI8")],
-        [InlineKeyboardButton("🌐 Visit Website", url= "https://optionstradinguni.online"),
-         InlineKeyboardButton("📜 Terms", callback_data="terms")],
-        [InlineKeyboardButton("🔒 Privacy", callback_data="privacy")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # Welcome message
-    welcome_text = (
-        f"👋 Welcome, <b>{name}</b>!\n\n"
-        f"At <b>Options Trading University</b>, we provide expert-led training, live profit flexes, "
-        f"and a thriving trader community.\n\n"
-        f"🔥 Here are today’s <b>Top 3 Traders</b>:\n"
-        f"{top3}\n\n"
-        f"Why join us?\n"
-        f"- 💸 Real trades with 2x–8x on Stocks/Crypto\n"
-        f"- 🚀 Meme Coin Moonshots up to 100x\n"
-        f"- 📖 Inspiring success stories\n\n"
-        f"Start your journey to financial growth today!"
-    )
-
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=welcome_text,
-        parse_mode=constants.ParseMode.HTML,
-        reply_markup=reply_markup
-    )
-
-    # ✅ Store user in DB
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("""
-                INSERT INTO users (user_id, username, display_name, wins, total_trades, total_profit)
-                VALUES (:id, :u, :d, 0, 0, 0)
-                ON CONFLICT(user_id) DO NOTHING
-            """), {
-                "id": str(user.id),
-                "u": user.username or "unknown",
-                "d": name
-            })
-    except Exception as e:
-        logger.error(f"Error adding user {user.id}: {e}")
-
 
 # ================================
 # Admin Alert Helper
