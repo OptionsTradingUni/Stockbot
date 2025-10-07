@@ -1127,7 +1127,7 @@ def load_font(font_paths, size):
                 continue
     return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
 
-def generate_broker_card(symbol, profit, roi, deposit, trader_name="TraderX"):
+def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
     Generates a clean, professional profit card like the NVDA example.
     Profit and ROI share the same line, chart aligns to the right.
