@@ -1147,7 +1147,7 @@ def _font(size, weight="Regular"):
     except:
         return ImageFont.load_default()
 
-def generate_broker_card(symbol, profit, roi, deposit, trader_name="TraderX"):
+def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     scale = 2
     W, H = 1200, 450
     img_w, img_h = W * scale, H * scale
