@@ -1111,103 +1111,135 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
     """
     return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
 
-import io, random
-from datetime import datetime, timezone
+# ===============================
+# ADVANCED BROKER CARD GENERATOR (with multi-font + perfect alignment)
+# ===============================
+import io
+import os
+import random
 from PIL import Image, ImageDraw, ImageFont
 
-# ============ FONT LOADER ============
-def load_font(size, bold=False):
-    """Try to load DejaVu font, fallback to default if missing (Railway safe)."""
-    try:
-        if bold:
-            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
-        else:
-            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-    except:
-        return ImageFont.load_default()
+# -------------------------------
+# FONT LOADER
+# -------------------------------
+def load_font(font_paths, size):
+    """
+    Try multiple .otf fonts until one loads successfully.
+    Falls back to system DejaVu if none found.
+    """
+    for path in font_paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    # fallback
+    return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
 
-# ============ IMAGE GENERATOR ============
-import requests # Used to download a professional font
 
-# --- Helper function to get a good font (same as before) ---
-# ===============================
-# BROKER CARD GENERATOR (Profit / Loss)
-# ===============================
-# ===============================
-# BROKER CARD GENERATOR (Profit / Loss)
-# ===============================
-import io, random
-from PIL import Image, ImageDraw, ImageFont
-
-def _font(size, weight="Regular"):
-    try:
-        if "Bold" in weight:
-            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-    except:
-        return ImageFont.load_default()
-
-import os, io
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
-
+# -------------------------------
+# MAIN IMAGE GENERATOR
+# -------------------------------
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Clean, centered, and balanced futuristic profit card.
-    Fixes misalignment and scaling issues.
+    Generates a premium broker-style profit/loss card using all your fonts.
+    Perfect for Telegram, TikTok, and promotional flex posts.
     """
-    bg_file = "images/ai_background.png"
-    font_path = "fonts/Inter-Bold.otf"
-    os.makedirs("output", exist_ok=True)
 
-    # --- Load background ---
-    image = Image.open(bg_file).convert("RGBA")
-    W, H = image.size
+    # --- Base Layout ---
+    W, H = 1400, 600  # Larger canvas for higher clarity
+    scale = 2
+    img_w, img_h = W * scale, H * scale
+    pad = 80 * scale
 
-    # --- Fonts ---
-    try:
-        font_main = ImageFont.truetype(font_path, int(H * 0.15))
-        font_caption = ImageFont.truetype(font_path, int(H * 0.05))
-    except OSError:
-        font_main = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", int(H * 0.15))
-        font_caption = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", int(H * 0.05))
+    # --- Font Paths ---
+    FONT_DIR = "fonts"
+    FONT_OPTIONS = [
+        os.path.join(FONT_DIR, "Inter-Bold.otf"),
+        os.path.join(FONT_DIR, "Inter-Regular.otf"),
+        os.path.join(FONT_DIR, "Poppins-Bold.otf"),
+        os.path.join(FONT_DIR, "Poppins-Medium.otf"),
+        os.path.join(FONT_DIR, "SF-Pro-Display-Bold.otf"),
+        os.path.join(FONT_DIR, "SF-Pro-Display-Regular.otf"),
+    ]
 
-    draw = ImageDraw.Draw(image)
+    # --- Load Fonts (with graceful fallback) ---
+    font_title = load_font(FONT_OPTIONS, int(90 * scale))
+    font_label = load_font(FONT_OPTIONS, int(40 * scale))
+    font_sub = load_font(FONT_OPTIONS, int(34 * scale))
+    font_symbol = load_font(FONT_OPTIONS, int(42 * scale))
 
     # --- Colors ---
-    pnl_color = (18, 201, 155) if profit >= 0 else (239, 68, 68)
-    prefix = "+" if profit >= 0 else "-"
-    profit_text = f"{prefix}${abs(profit):,.0f}  ({roi:+.1f}%)"
-    caption = f"{symbol.upper()} | Deposit ${deposit:,.0f} | {trader_name}"
+    BG_START = (15, 18, 32)
+    BG_END = (30, 34, 54)
+    TEXT_COLOR = (230, 230, 240)
+    TEXT_FADE = (150, 155, 180)
+    PROFIT_COLOR = (18, 201, 155)
+    LOSS_COLOR = (239, 68, 68)
+    SYMBOL_BG = (50, 60, 80)
 
-    # --- Calculate clean text positions ---
-    text_w, text_h = draw.textsize(profit_text, font=font_main)
-    cap_w, cap_h = draw.textsize(caption, font=font_caption)
-    text_x = (W - text_w) / 2
-    text_y = (H - text_h) / 2.1  # slightly above true center
-    cap_y = text_y + text_h + (H * 0.08)
+    # --- Create Canvas ---
+    img = Image.new("RGB", (img_w, img_h))
+    draw = ImageDraw.Draw(img)
 
-    # --- Glow Layer ---
-    glow_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    glow_draw = ImageDraw.Draw(glow_layer)
+    # Gradient Background
+    for y in range(img_h):
+        r = BG_START[0] + (BG_END[0] - BG_START[0]) * (y / img_h)
+        g = BG_START[1] + (BG_END[1] - BG_START[1]) * (y / img_h)
+        b = BG_START[2] + (BG_END[2] - BG_START[2]) * (y / img_h)
+        draw.line([(0, y), (img_w, y)], fill=(int(r), int(g), int(b)))
 
-    for blur, alpha in [(40, 80), (20, 130), (10, 200)]:
-        tmp = Image.new("RGBA", image.size, (0, 0, 0, 0))
-        tmp_draw = ImageDraw.Draw(tmp)
-        tmp_draw.text((text_x, text_y), profit_text, fill=pnl_color + (alpha,), font=font_main)
-        tmp = tmp.filter(ImageFilter.GaussianBlur(blur))
-        glow_layer = Image.alpha_composite(glow_layer, tmp)
+    # --- Header Section ---
+    circle_d = 100 * scale
+    draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG)
+    draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol, fill=TEXT_COLOR, font=font_symbol, anchor="mm")
 
-    # Combine glow with base
-    image = Image.alpha_composite(image, glow_layer)
+    draw.text((pad + circle_d + 40 * scale, pad + 10 * scale), trader_name, fill=TEXT_COLOR, font=font_label, anchor="ls")
+    draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Verified Signal Provider", fill=TEXT_FADE, font=font_sub, anchor="ls")
 
-    # --- Foreground text (sharp) ---
-    draw = ImageDraw.Draw(image)
-    draw.text((text_x, text_y), profit_text, fill=pnl_color, font=font_main)
-    draw.text(((W - cap_w) / 2, cap_y), caption, fill=(230, 230, 240), font=font_caption)
+    # --- Profit Section ---
+    profit_prefix = "+" if profit >= 0 else "-"
+    profit_color = PROFIT_COLOR if profit >= 0 else LOSS_COLOR
+    profit_str = f"{profit_prefix}${abs(profit):,.2f}"
+    roi_str = f"{roi:+.2f}% ROI"
 
-    # --- Save buffer ---
+    # Dynamic alignment
+    profit_x = pad
+    profit_y = img_h / 2 - (60 * scale)
+
+    draw.text((profit_x, profit_y), profit_str, fill=profit_color, font=font_title, anchor="ls")
+    profit_w = draw.textlength(profit_str, font=font_title)
+    draw.text((profit_x + profit_w + 30 * scale, profit_y + (20 * scale)), roi_str, fill=TEXT_FADE, font=font_label, anchor="ls")
+
+    # --- Chart Simulation ---
+    chart_x, chart_y = img_w * 0.55, pad
+    chart_w, chart_h = img_w - chart_x - pad, img_h - (pad * 2)
+
+    num_points = 35
+    points = []
+    for i in range(num_points):
+        base_height = chart_h * (1 - (i / num_points))
+        volatility = random.uniform(-0.12, 0.12) * chart_h
+        final_y = chart_y + base_height + volatility
+        if i == num_points - 1:
+            final_y = chart_y
+        points.append((chart_x + (chart_w / (num_points - 1)) * i, final_y))
+
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw_overlay = ImageDraw.Draw(overlay)
+    fill_color = profit_color + (60,)
+    draw_overlay.polygon(points + [(chart_x + chart_w, chart_y + chart_h), (chart_x, chart_y + chart_h)], fill=fill_color)
+    draw_overlay.line(points, fill=profit_color, width=int(5 * scale))
+    img.paste(overlay, (0, 0), overlay)
+
+    # --- Footer ---
+    footer_text = f"Initial Deposit: ${deposit:,.2f}"
+    draw.text((pad, img_h - pad + (25 * scale)), footer_text, fill=TEXT_FADE, font=font_label, anchor="ls")
+
+    # --- Final Render (Downscale for anti-aliasing) ---
+    final_img = img.resize((W, H), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
-    image.convert("RGB").save(buf, format="PNG", quality=95)
+    final_img.save(buf, format="PNG", quality=95)
     buf.seek(0)
     return buf
 # ======================
