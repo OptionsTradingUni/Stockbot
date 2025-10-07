@@ -1130,134 +1130,170 @@ def load_font(size, bold=False):
 import requests # Used to download a professional font
 
 # --- Helper function to get a good font (same as before) ---
+import io
+import random
+import requests
+from PIL import Image, ImageDraw, ImageFont
+
+# --- Font Loader (Unchanged but essential) ---
 def get_font(size, weight="Regular"):
     """Downloads and loads the 'Inter' font from Google Fonts."""
+    # Using a cached local directory is best practice for production
     font_name = "Inter"
     url = f"https://rsms.me/inter/font-files/Inter-{weight}.otf"
     try:
-        font_file = f"Inter-{weight}.otf"
-        with open(font_file, "rb") as f:
-            return ImageFont.truetype(f, size)
-    except FileNotFoundError:
+        # Check for font file locally first
+        return ImageFont.truetype(f"Inter-{weight}.otf", size)
+    except IOError:
+        print(f"Downloading Inter-{weight}.otf...")
         try:
             response = requests.get(url)
             response.raise_for_status()
-            with open(font_file, "wb") as f:
-                f.write(response.content)
-            return ImageFont.truetype(io.BytesIO(response.content), size)
-        except requests.exceptions.RequestException:
-            print("Warning: Could not download font. Using default.")
-            return ImageFont.load_default()
+            font_content = io.BytesIO(response.content)
+            # Save the font locally to avoid re-downloading
+            with open(f"Inter-{weight}.otf", "wb") as f:
+                f.write(font_content.getbuffer())
+            font_content.seek(0) # Reset buffer position
+            return ImageFont.truetype(font_content, size)
+        except requests.exceptions.RequestException as e:
+            print(f"Warning: Could not download font: {e}. Using default.")
+            return ImageFont.load_default(size)
 
-def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
+def generate_broker_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generate a wide, dashboard-style profit report image with a bar chart.
-    Returns an in-memory PNG buffer.
+    Generates a professional, broker-style profit card image.
     """
-    W, H = 1200, 400 # Wide banner dimensions
+    # --- 1. High-Level Design & Scaling ---
+    # We will render the image at 2x resolution and scale down for anti-aliasing
+    scale = 2
+    W, H = 1200, 450
+    img_w, img_h = W * scale, H * scale
 
-    # --- 1. Colors & Fonts based on your image ---
-    BG_COLOR = (12, 12, 12) # Very dark grey, almost black
-    TEXT_COLOR = (240, 240, 240)
-    PROFIT_COLOR = (29, 255, 178) # Vibrant mint green
-    ROI_COLOR = (255, 228, 0) # Bright yellow
-    TRADER_COLOR = (59, 130, 246) # Clear blue
+    # --- 2. Enhanced Color Palette ---
+    BG_GRADIENT_START = (20, 22, 38)   # Dark Navy Blue
+    BG_GRADIENT_END = (38, 41, 64)     # Lighter Navy Blue
+    TEXT_COLOR = (235, 235, 255)       # Off-white
+    TEXT_SECONDARY = (150, 155, 180)   # Greyish
+    PROFIT_COLOR = (18, 201, 155)      # Teal Green
+    LOSS_COLOR = (239, 68, 68)         # Red
+    SYMBOL_BG_COLOR = (55, 65, 81)     # Grey for the logo circle
 
-    # Determine profit/loss color and prefix
-    if profit >= 0:
-        actual_profit_color = PROFIT_COLOR
-        profit_prefix = "+"
-    else:
-        actual_profit_color = "#ef4444" # Red for loss
-        profit_prefix = ""
+    # --- 3. Load Fonts with Various Weights ---
+    try:
+        font_light = get_font(28 * scale, "Light")
+        font_reg = get_font(32 * scale, "Regular")
+        font_med = get_font(40 * scale, "Medium")
+        font_bold = get_font(90 * scale, "Bold")
+        font_symbol = get_font(36 * scale, "Bold")
+    except Exception as e:
+        print(f"Error loading fonts: {e}")
+        return None
 
-    # Load fonts
-    font_title = get_font(32, "Bold")
-    font_data = get_font(28, "Medium")
+    # --- 4. Setup Canvas ---
+    img = Image.new("RGB", (img_w, img_h))
+    draw = ImageDraw.Draw(img)
 
-    # --- 2. Setup Canvas ---
-    bg = Image.new("RGB", (W, H), BG_COLOR)
-    draw = ImageDraw.Draw(bg)
+    # Draw Gradient Background
+    for y in range(img_h):
+        r = int(BG_GRADIENT_START[0] + (BG_GRADIENT_END[0] - BG_GRADIENT_START[0]) * (y / img_h))
+        g = int(BG_GRADIENT_START[1] + (BG_GRADIENT_END[1] - BG_GRADIENT_START[1]) * (y / img_h))
+        b = int(BG_GRADIENT_START[2] + (BG_GRADIENT_END[2] - BG_GRADIENT_START[2]) * (y / img_h))
+        draw.line([(0, y), (img_w, y)], fill=(r, g, b))
 
-    # --- 3. Draw Left Column (Text Info) ---
-    pad_x = 50
-    y = 60
-    line_spacing = 65
+    # --- 5. Draw Content ---
+    pad = 60 * scale
 
-    # Title with icon
-    draw.text((pad_x, y), "□", fill=TEXT_COLOR, font=font_title)
-    draw.text((pad_x + 40, y), f"{symbol} Profit Report", fill=TEXT_COLOR, font=font_title)
-    y += line_spacing * 1.5
+    # A. Header Section (Logo and Trader)
+    # Circle for Symbol
+    circle_d = 80 * scale
+    draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG_COLOR)
+    draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol, fill=TEXT_COLOR, font=font_symbol, anchor="mm")
 
-    # Helper to draw a line of text with a colored value
-    def draw_info_line(label, value, value_color):
-        nonlocal y
-        # Draw the label (e.g., "Profit: ")
-        draw.text((pad_x, y), label, fill=TEXT_COLOR, font=font_data)
-        # Get width of the label to position the value right after it
-        label_width = draw.textlength(label, font=font_data)
-        # Draw the value
-        draw.text((pad_x + label_width, y), value, fill=value_color, font=font_data)
-        y += line_spacing
+    # Trader Name
+    draw.text((pad + circle_d + 30 * scale, pad + 15 * scale), trader_name, fill=TEXT_COLOR, font=font_med, anchor="ls")
+    draw.text((pad + circle_d + 30 * scale, pad + 65 * scale), "Verified Signal Provider", fill=TEXT_SECONDARY, font=font_light, anchor="ls")
 
-    # Draw each data point
-    draw_info_line("Deposit: ", f"${deposit:,.0f}", TEXT_COLOR)
-    draw_info_line("Profit: ", f"{profit_prefix}${abs(profit):,.0f}", actual_profit_color)
-    draw_info_line("ROI: ", f"{roi:.1f}%", ROI_COLOR)
-    draw_info_line("Trader: ", trader_name, TRADER_COLOR)
+    # B. Main KPI Section (Profit and ROI)
+    profit_prefix = "+" if profit >= 0 else ""
+    profit_str = f"{profit_prefix}${abs(profit):,.2f}"
+    roi_str = f"{roi:,.2f}% ROI"
+    profit_fill = PROFIT_COLOR if profit >= 0 else LOSS_COLOR
 
-    # --- 4. Draw Right Column (Bar Chart) ---
-    chart_area_x = 600
-    chart_area_y = 60
-    chart_area_w = W - chart_area_x - pad_x
-    chart_area_h = H - chart_area_y * 2
+    draw.text((pad, img_h / 2 + 10 * scale), profit_str, fill=profit_fill, font=font_bold, anchor="ls")
+    # Position ROI text relative to the profit text
+    profit_w = draw.textlength(profit_str, font=font_bold)
+    draw.text((pad + profit_w + 20 * scale, img_h / 2 + 20 * scale), roi_str, fill=TEXT_SECONDARY, font=font_med, anchor="ls")
 
-    num_bars = 12
-    bar_spacing = 15
-    bar_width = (chart_area_w - (bar_spacing * (num_bars - 1))) / num_bars
+    # C. Chart Section (Right side)
+    chart_x, chart_y = img_w * 0.55, pad
+    chart_w, chart_h = img_w - chart_x - pad, img_h - (pad * 2)
 
-    for i in range(num_bars):
-        # Generate a random height for each bar for visual effect
-        bar_height = chart_area_h * random.uniform(0.15, 0.95)
-        
-        x0 = chart_area_x + i * (bar_width + bar_spacing)
-        y0 = chart_area_y + (chart_area_h - bar_height)
-        x1 = x0 + bar_width
-        y1 = chart_area_y + chart_area_h
-        
-        draw.rectangle([x0, y0, x1, y1], fill=PROFIT_COLOR)
+    # Generate points for an upward-trending chart
+    points = []
+    num_points = 30
+    for i in range(num_points):
+        base_height = chart_h * (1 - (i / num_points)) # Start high (y=0 is top), go low
+        volatility = random.uniform(-0.15, 0.15) * chart_h
+        final_y = chart_y + base_height + volatility
+        # Ensure the last point is the lowest (highest on chart)
+        if i == num_points - 1:
+            final_y = chart_y
+        points.append((chart_x + (chart_w / (num_points - 1)) * i, final_y))
 
-    # --- 5. Save to Buffer ---
+    # Create the polygon for the area fill
+    poly_points = points[:]
+    poly_points.append((chart_x + chart_w, chart_y + chart_h))
+    poly_points.append((chart_x, chart_y + chart_h))
+    
+    # Create a semi-transparent fill color
+    area_fill = profit_fill + (60,) # Add alpha for transparency
+    
+    # Draw area and line on a temporary transparent layer to handle transparency
+    overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
+    draw_overlay = ImageDraw.Draw(overlay)
+    draw_overlay.polygon(poly_points, fill=area_fill)
+    draw_overlay.line(points, fill=profit_fill, width=int(4 * scale), joint="curve")
+    img.paste(overlay, (0, 0), overlay)
+
+    # D. Footer Text
+    deposit_text = f"Initial Deposit: ${deposit:,.2f}"
+    draw.text((pad, img_h - pad), deposit_text, fill=TEXT_SECONDARY, font=font_reg, anchor="ls")
+
+    # --- 6. Finalize: Scale Down and Save to Buffer ---
+    final_img = img.resize((W, H), Image.Resampling.LANCZOS)
+
     buf = io.BytesIO()
-    bg.save(buf, format="PNG", quality=95)
+    final_img.save(buf, format="PNG", quality=95)
     buf.seek(0)
     return buf
 
 # --- Example Usage ---
 if __name__ == '__main__':
-    # Generate a card using data similar to your example
-    profit_banner_buffer = generate_profit_card(
+    print("Generating profit card for BTC...")
+    btc_card = generate_broker_card(
         symbol="BTC",
-        profit=8450,
+        profit=8450.75,
         roi=604.2,
-        deposit=1400, # Calculated from profit and ROI
+        deposit=1400.00,
         trader_name="Robert Garcia"
     )
-    with open("btc_profit_banner.png", "wb") as f:
-        f.write(profit_banner_buffer.getbuffer())
-    print("Generated 'btc_profit_banner.png'")
-
-    # Generate a second example for a different stock
-    stock_banner_buffer = generate_profit_card(
-        symbol="NVDA",
-        profit=21550,
-        roi=43.1,
-        deposit=50000,
-        trader_name="Jane Doe"
-    )
-    with open("nvda_profit_banner.png", "wb") as f:
-        f.write(stock_banner_buffer.getbuffer())
-    print("Generated 'nvda_profit_banner.png'")
+    if btc_card:
+        with open("btc_broker_card.png", "wb") as f:
+            f.write(btc_card.getbuffer())
+        print("✅ Saved 'btc_broker_card.png'")
+        
+        # Example of a loss
+        print("\nGenerating loss card for TSLA...")
+        tsla_card = generate_broker_card(
+            symbol="TSLA",
+            profit=-1230.50,
+            roi=-12.3,
+            deposit=10000.00,
+            trader_name="OptionsAI"
+        )
+        with open("tsla_broker_card.png", "wb") as f:
+            f.write(tsla_card.getbuffer())
+        print("✅ Saved 'tsla_broker_card.png'")
 
 # ======================
 # Short caption fallback
