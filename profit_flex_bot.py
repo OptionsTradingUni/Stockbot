@@ -1112,8 +1112,9 @@ def short_highlight(symbol: str, profit: float, percentage_gain: float) -> str:
     return f"+${profit:,.0f} on {symbol} • ROI {percentage_gain:.1f}% 🔥"
 
 # ===============================
-# ADVANCED BROKER CARD GENERATOR (with multi-font + perfect alignment)
+# BROKER CARD GENERATOR (Centered Profit + ROI Right)
 # ===============================
+
 import io, os, random
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -1137,7 +1138,8 @@ def load_font(font_paths, size):
 # -----------------------------
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generates a premium broker-style image (centered text, neon glow, Pillow-10+ safe).
+    Generates a professional, broker-style image.
+    Profit is centered horizontally, ROI fixed to the right.
     """
     # --- Layout ---
     W, H = 1400, 600
@@ -1164,9 +1166,9 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
         os.path.join(FONT_DIR, "SF-Pro-Display-Regular.otf"),
     ]
 
-    font_main = load_font(FONT_OPTIONS, int(100 * scale))
-    font_roi = load_font(FONT_OPTIONS, int(44 * scale))
-    font_label = load_font(FONT_OPTIONS, int(36 * scale))
+    font_title = load_font(FONT_OPTIONS, int(100 * scale))
+    font_label = load_font(FONT_OPTIONS, int(42 * scale))
+    font_small = load_font(FONT_OPTIONS, int(36 * scale))
     font_symbol = load_font(FONT_OPTIONS, int(46 * scale))
 
     # --- Canvas ---
@@ -1188,38 +1190,40 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG)
     draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol.upper(), fill=TEXT_MAIN, font=font_symbol, anchor="mm")
     draw.text((pad + circle_d + 40 * scale, pad + 10 * scale), trader_name, fill=TEXT_MAIN, font=font_label, anchor="ls")
-    draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Verified Signal Provider", fill=TEXT_SUB, font=font_label, anchor="ls")
+    draw.text((pad + circle_d + 40 * scale, pad + 60 * scale), "Verified Signal Provider", fill=TEXT_SUB, font=font_small, anchor="ls")
 
-    # --- Profit Section (centered) ---
+    # --- Profit Section (centered profit + right-aligned ROI) ---
     profit_prefix = "+" if profit >= 0 else "-"
-    color = GREEN if profit >= 0 else RED
+    profit_color = GREEN if profit >= 0 else RED
     profit_str = f"{profit_prefix}${abs(profit):,.2f}"
     roi_str = f"{roi:+.2f}% ROI"
 
-    # Measure for centering
-    bbox = draw.textbbox((0, 0), profit_str, font=font_main)
+    # Measure text to center horizontally
+    bbox = draw.textbbox((0, 0), profit_str, font=font_title)
     profit_w = bbox[2] - bbox[0]
     profit_h = bbox[3] - bbox[1]
 
     center_x = img_w / 2
-    center_y = img_h * 0.38  # slightly higher (like your screenshot)
+    profit_y = img_h * 0.38  # vertical alignment like your example
     text_x = center_x - (profit_w / 2)
-    text_y = center_y - (profit_h / 2)
+    text_y = profit_y - (profit_h / 2)
 
-    # Glow layer
+    # Glow effect
     glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
     glow_draw = ImageDraw.Draw(glow)
-    glow_draw.text((text_x, text_y), profit_str, fill=color + (180,), font=font_main, anchor="lt")
+    glow_draw.text((text_x, text_y), profit_str, fill=profit_color + (180,), font=font_title)
     blurred = glow.filter(ImageFilter.GaussianBlur(radius=25 * scale))
     img.paste(blurred, (0, 0), blurred)
 
-    # Draw main text
-    draw.text((text_x, text_y), profit_str, fill=color, font=font_main, anchor="lt")
+    # Main profit text
+    draw.text((text_x, text_y), profit_str, fill=profit_color, font=font_title)
 
-    # ROI label (offset to right)
-    draw.text((text_x + profit_w + 40 * scale, text_y + (20 * scale)), roi_str, fill=TEXT_SUB, font=font_roi, anchor="ls")
+    # ROI right side near chart
+    roi_x = img_w * 0.78
+    roi_y = text_y + (20 * scale)
+    draw.text((roi_x, roi_y), roi_str, fill=TEXT_SUB, font=font_label)
 
-    # --- Chart (Right) ---
+    # --- Chart (Right Side) ---
     chart_x, chart_y = img_w * 0.55, pad
     chart_w, chart_h = img_w - chart_x - pad, img_h - (pad * 2)
     points = []
@@ -1234,13 +1238,13 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
 
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(overlay)
-    d.polygon(points + [(chart_x + chart_w, chart_y + chart_h), (chart_x, chart_y + chart_h)], fill=color + (55,))
-    d.line(points, fill=color, width=int(5 * scale))
+    d.polygon(points + [(chart_x + chart_w, chart_y + chart_h), (chart_x, chart_y + chart_h)], fill=profit_color + (55,))
+    d.line(points, fill=profit_color, width=int(5 * scale))
     img.paste(overlay, (0, 0), overlay)
 
     # --- Footer ---
     footer = f"Initial Deposit: ${deposit:,.2f}"
-    draw.text((pad, img_h - pad + (25 * scale)), footer, fill=TEXT_SUB, font=font_roi, anchor="ls")
+    draw.text((pad, img_h - pad + (25 * scale)), footer, fill=TEXT_SUB, font=font_label, anchor="ls")
 
     # --- Final output ---
     final = img.resize((W, H), Image.Resampling.LANCZOS)
@@ -1248,6 +1252,26 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     final.save(buf, format="PNG", quality=95)
     buf.seek(0)
     return buf
+
+
+# -----------------------------
+# Example Usage
+# -----------------------------
+if __name__ == "__main__":
+    print("Generating example broker card...")
+
+    result = generate_broker_card(
+        symbol="DOT",
+        profit=18517.08,
+        roi=264.19,
+        deposit=7009.00,
+        trader_name="Amy Ward"
+    )
+
+    with open("broker_card_centered.png", "wb") as f:
+        f.write(result.getbuffer())
+
+    print("✅ Saved as 'broker_card_centered.png'")
 # ======================
 # Short caption fallback
 # ======================
