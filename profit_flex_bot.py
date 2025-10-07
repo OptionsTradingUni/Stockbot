@@ -1245,7 +1245,7 @@ def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
 if __name__ == "__main__":
     print("Generating NVDA-style broker card...")
 
-    result = generate_broker_card(
+    result = generate_profit_card(
         symbol="NVDA",
         profit=1870.12,
         roi=5.55,
