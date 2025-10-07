@@ -36,13 +36,13 @@ def home():
 # Helper: Time-ago formatting
 # ----------------------------------------------------------------------
 def time_ago(posted_at):
-    """Convert datetime into natural 'time ago' string (handles naive/aware)."""
+    """Convert datetime into 'x time ago — full UTC time' string (handles naive & aware datetimes)."""
     if not posted_at:
         return "Unknown time"
 
     now = datetime.now(timezone.utc)
 
-    # 🩹 Convert naive datetimes (no timezone) to UTC
+    # 🩹 Fix: convert naive datetime to UTC
     if posted_at.tzinfo is None:
         posted_at = posted_at.replace(tzinfo=timezone.utc)
 
@@ -52,19 +52,24 @@ def time_ago(posted_at):
     hours = int(minutes // 60)
     days = int(hours // 24)
 
+    # Relative text
     if seconds < 60:
-        return "just now"
+        rel = "just now"
     elif minutes < 60:
-        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        rel = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
     elif hours < 24:
-        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        rel = f"{hours} hour{'s' if hours != 1 else ''} ago"
     elif days == 1:
-        return "yesterday"
+        rel = "yesterday"
     elif days < 7:
-        return f"{days} days ago"
+        rel = f"{days} days ago"
     else:
-        return posted_at.strftime("%b %d, %Y")
+        rel = posted_at.strftime("%b %d, %Y")
 
+    # 🕒 Full UTC timestamp
+    full_time = posted_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    return f"{rel} — {full_time}"
 # ----------------------------------------------------------------------
 # /api/recent — JSON API for last 40 trades
 # ----------------------------------------------------------------------
