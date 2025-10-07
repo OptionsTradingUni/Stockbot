@@ -51,12 +51,12 @@ def api_recent_100():
         data = []
         for row in rows:
             posted_at = row.get("posted_at")
-            # Note: you need the time_ago function for this to work
             data.append({
+                "txid": row["txid"],  # <-- ✅ THIS LINE IS THE FIX
                 "symbol": row["symbol"],
                 "trader_name": row["trader_name"],
                 "profit": float(row["profit"] or 0),
-                "roi": float(row["roi"] or 0), # Added ROI for completeness
+                "roi": float(row["roi"] or 0),
                 "time_ago": time_ago(posted_at) if posted_at else "Unknown time"
             })
         return jsonify(data)
