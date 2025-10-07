@@ -36,13 +36,17 @@ def home():
 # Helper: Time-ago formatting
 # ----------------------------------------------------------------------
 def time_ago(posted_at):
-    """Convert datetime into natural 'time ago' string."""
+    """Convert datetime into natural 'time ago' string (handles naive/aware)."""
     if not posted_at:
         return "Unknown time"
 
     now = datetime.now(timezone.utc)
-    diff = now - posted_at
 
+    # 🩹 Convert naive datetimes (no timezone) to UTC
+    if posted_at.tzinfo is None:
+        posted_at = posted_at.replace(tzinfo=timezone.utc)
+
+    diff = now - posted_at
     seconds = diff.total_seconds()
     minutes = int(seconds // 60)
     hours = int(minutes // 60)
