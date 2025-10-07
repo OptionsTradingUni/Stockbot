@@ -1159,7 +1159,7 @@ def get_font(size, weight="Regular"):
             print(f"Warning: Could not download font: {e}. Using default.")
             return ImageFont.load_default(size)
 
-def generate_broker_card(symbol, profit, roi, deposit, trader_name="TraderX"):
+def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
     Generates a professional, broker-style profit card image.
     """
