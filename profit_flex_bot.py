@@ -1147,66 +1147,65 @@ def _font(size, weight="Regular"):
     except:
         return ImageFont.load_default()
 
-import os
+import os, io
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# ===============================
-# FUTURISTIC PROFIT CARD GENERATOR (AI BACKGROUND + NEON GLOW)
-# ===============================
 def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     """
-    Generates a futuristic-style profit card with your AI-generated background
-    and glowing neon profit text.
+    Clean, centered, and balanced futuristic profit card.
+    Fixes misalignment and scaling issues.
     """
-    # --- File paths ---
-    bg_file = os.path.join("images", "ai_background.png")
-    font_path = os.path.join("fonts", "Inter-Bold.otf")
+    bg_file = "images/ai_background.png"
+    font_path = "fonts/Inter-Bold.otf"
     os.makedirs("output", exist_ok=True)
 
     # --- Load background ---
-    try:
-        image = Image.open(bg_file).convert("RGBA")
-    except FileNotFoundError:
-        image = Image.new("RGBA", (1280, 720), (10, 10, 20, 255))
-
-    # --- Load font ---
-    try:
-        font = ImageFont.truetype(font_path, 180)
-    except OSError:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 180)
-
+    image = Image.open(bg_file).convert("RGBA")
     W, H = image.size
+
+    # --- Fonts ---
+    try:
+        font_main = ImageFont.truetype(font_path, int(H * 0.15))
+        font_caption = ImageFont.truetype(font_path, int(H * 0.05))
+    except OSError:
+        font_main = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", int(H * 0.15))
+        font_caption = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", int(H * 0.05))
+
     draw = ImageDraw.Draw(image)
 
-    # --- Determine colors ---
+    # --- Colors ---
     pnl_color = (18, 201, 155) if profit >= 0 else (239, 68, 68)
-    text_prefix = "+" if profit >= 0 else "-"
-    text = f"{text_prefix}${abs(profit):,.0f}  ({roi:+.1f}%)"
+    prefix = "+" if profit >= 0 else "-"
+    profit_text = f"{prefix}${abs(profit):,.0f}  ({roi:+.1f}%)"
     caption = f"{symbol.upper()} | Deposit ${deposit:,.0f} | {trader_name}"
 
-    # --- Neon Glow Layer ---
+    # --- Calculate clean text positions ---
+    text_w, text_h = draw.textsize(profit_text, font=font_main)
+    cap_w, cap_h = draw.textsize(caption, font=font_caption)
+    text_x = (W - text_w) / 2
+    text_y = (H - text_h) / 2.1  # slightly above true center
+    cap_y = text_y + text_h + (H * 0.08)
+
+    # --- Glow Layer ---
     glow_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
     glow_draw = ImageDraw.Draw(glow_layer)
 
-    for blur, alpha in [(50, 80), (25, 120), (10, 200)]:
+    for blur, alpha in [(40, 80), (20, 130), (10, 200)]:
         tmp = Image.new("RGBA", image.size, (0, 0, 0, 0))
         tmp_draw = ImageDraw.Draw(tmp)
-        tmp_draw.text((W / 2, H / 2), text, fill=pnl_color + (alpha,), font=font, anchor="mm")
+        tmp_draw.text((text_x, text_y), profit_text, fill=pnl_color + (alpha,), font=font_main)
         tmp = tmp.filter(ImageFilter.GaussianBlur(blur))
         glow_layer = Image.alpha_composite(glow_layer, tmp)
 
-    # Merge glow
+    # Combine glow with base
     image = Image.alpha_composite(image, glow_layer)
 
-    # --- Final text (sharp foreground) ---
+    # --- Foreground text (sharp) ---
     draw = ImageDraw.Draw(image)
-    draw.text((W / 2, H / 2), text, fill=pnl_color, font=font, anchor="mm")
+    draw.text((text_x, text_y), profit_text, fill=pnl_color, font=font_main)
+    draw.text(((W - cap_w) / 2, cap_y), caption, fill=(230, 230, 240), font=font_caption)
 
-    # Caption text
-    caption_font = ImageFont.truetype(font_path, 60) if os.path.exists(font_path) else ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 60)
-    draw.text((W / 2, H - 100), caption, fill=(220, 230, 240), font=caption_font, anchor="mm")
-
-    # Save to buffer for Telegram send
+    # --- Save buffer ---
     buf = io.BytesIO()
     image.convert("RGB").save(buf, format="PNG", quality=95)
     buf.seek(0)
