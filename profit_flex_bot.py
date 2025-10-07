@@ -92,11 +92,14 @@ def generate_entry_exit(symbol, roi, live_price=None):
     """
     Generate realistic entry & exit prices for any symbol.
     If live_price is provided (from get_market_data), reuse it as the exit price.
+    For stocks: uses yfinance.
+    For crypto: uses Coinbase, falls back to CoinGecko.
+    For NIKY/DEW: simulated prices.
     """
     symbol_upper = symbol.upper()
 
     try:
-        # 🟢 Use live price if available, otherwise fetch or fallback
+        # 🟢 Use live price if provided
         if live_price is not None:
             exit_price = round(float(live_price), 6)  # ✅ real, live exit
         else:
@@ -107,15 +110,25 @@ def generate_entry_exit(symbol, roi, live_price=None):
                 if not live_price:
                     live_price = stock.history(period="1d")["Close"].iloc[-1]
                 exit_price = round(float(live_price), 6)
-            # 🟢 CRYPTO → use CoinGecko
+            # 🟢 CRYPTO → try Coinbase first, then CoinGecko
             elif symbol_upper in CRYPTO_SYMBOLS:
-                cg_id = CRYPTO_ID_MAP.get(symbol_upper)
-                if cg_id:
-                    data = cg.get_price(ids=cg_id, vs_currencies="usd")
-                    exit_price = round(float(data[cg_id]["usd"]), 6)
-                else:
-                    exit_price = round(random.uniform(1, 500), 6)  # fallback
-            # 🟢 MEME COINS (simulated)
+                try:
+                    # Coinbase API
+                    url = f"https://api.coinbase.com/v2/prices/{symbol_upper}-USD/spot"
+                    r = requests.get(url, timeout=5)
+                    if r.status_code == 200 and "data" in r.json():
+                        exit_price = round(float(r.json()["data"]["amount"]), 6)
+                    else:
+                        raise Exception("Coinbase API failed")
+                except Exception as e:
+                    logger.warning(f"⚠️ Coinbase failed for {symbol_upper}: {e}, falling back to CoinGecko")
+                    cg_id = CRYPTO_ID_MAP.get(symbol_upper)
+                    if cg_id:
+                        data = cg.get_price(ids=cg_id, vs_currencies="usd")
+                        exit_price = round(float(data[cg_id]["usd"]), 6)
+                    else:
+                        raise Exception("No CoinGecko ID mapped")
+            # 🟢 MEME COINS (NIKY, DEW) → simulated
             elif symbol_upper in ["NIKY", "DEW"]:
                 exit_price = round(random.uniform(0.0001, 0.05), 6)
             # 🟡 Generic fallback
