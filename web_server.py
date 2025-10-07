@@ -1,42 +1,45 @@
 import os
 import logging
 from flask import Flask, render_template, jsonify
-from sqlalchemy import select, text   # ✅ Added text import
+from sqlalchemy import select, text
 from dotenv import load_dotenv
-from datetime import datetime, timezone  # ✅ Added datetime import
-
-# Try to import database models
-try:
-    from models import engine, trade_logs
-except Exception as e:
-    logging.critical(f"Failed to import from models.py: {e}")
-    raise
+from datetime import datetime, timezone
 
 # --- Configure logging globally ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
-logger = logging.getLogger(__name__)  # ✅ Define logger properly
-
-logging.info("Web server script starting up...")
+logger = logging.getLogger(__name__)
+logger.info("Web server script starting up...")
 
 # --- Load environment ---
 load_dotenv()
 
+# --- Import database models safely ---
+try:
+    from models import engine, trade_logs
+except Exception as e:
+    logger.critical(f"Failed to import from models.py: {e}")
+    raise
+
+# --- Flask app setup ---
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def home():
-    """Health check route."""
-    logger.info("Root URL '/' was hit successfully.")
+    """Basic health check route."""
+    logger.info("Root URL '/' accessed successfully.")
     return "✅ Web Server is running and accessible."
 
+# ----------------------------------------------------------------------
+# Helper: Time-ago formatting
+# ----------------------------------------------------------------------
 def time_ago(posted_at):
-    """Convert datetime into natural 'time ago' text."""
+    """Convert datetime into natural 'time ago' string."""
     if not posted_at:
         return "Unknown time"
-    
+
     now = datetime.now(timezone.utc)
     diff = now - posted_at
 
@@ -58,27 +61,30 @@ def time_ago(posted_at):
     else:
         return posted_at.strftime("%b %d, %Y")
 
-# ✅ /api/recent — returns JSON of last 40 trades
+# ----------------------------------------------------------------------
+# /api/recent — JSON API for last 40 trades
+# ----------------------------------------------------------------------
 @app.route("/api/recent")
 def recent_trade_logs():
     """Return up to 40 most recent trades as JSON."""
     try:
         with engine.connect() as conn:
-            query = """
+            query = text("""
                 SELECT txid, symbol, trader_name,
                        COALESCE(broker_name, 'Verified Exchange') AS broker_name,
                        profit, roi, posted_at
                 FROM trade_logs
                 ORDER BY posted_at DESC
                 LIMIT 40
-            """
-            rows = conn.execute(text(query)).mappings().all()
+            """)
+            rows = conn.execute(query).mappings().all()
 
         if not rows:
             return jsonify({"message": "No recent trades found."}), 200
 
         data = []
         for row in rows:
+            posted_at = row.get("posted_at")
             data.append({
                 "txid": row["txid"],
                 "symbol": row["symbol"],
@@ -86,11 +92,8 @@ def recent_trade_logs():
                 "trader_name": row["trader_name"],
                 "profit": float(row["profit"] or 0),
                 "roi": float(row["roi"] or 0),
-                "posted_at": (
-                    row["posted_at"].isoformat()
-                    if row["posted_at"]
-                    else datetime.now(timezone.utc).isoformat()
-                ),
+                "posted_at": posted_at.isoformat() if posted_at else None,
+                "time_ago": time_ago(posted_at) if posted_at else "Unknown time"
             })
 
         return jsonify(data), 200
@@ -98,31 +101,34 @@ def recent_trade_logs():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        logger.error(f"⚠️ Error fetching /api/recent: {e}")
+        logger.error(f"⚠️ Error fetching /api/recent: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-# ✅ /log/<txid> — individual trade viewer
-@app.route('/log/<txid>')
+# ----------------------------------------------------------------------
+# /log/<txid> — Single Trade Viewer
+# ----------------------------------------------------------------------
+@app.route("/log/<txid>")
 def show_log(txid):
     """Display verification details for a specific trade."""
-    logger.info(f"Log for txid '{txid}' was requested.")
+    logger.info(f"Log for txid '{txid}' requested.")
     try:
         with engine.connect() as conn:
             stmt = select(trade_logs).where(trade_logs.c.txid == txid)
             result = conn.execute(stmt).fetchone()
-        
+
         if not result:
-            logger.warning(f"TXID '{txid}' not found in the database.")
+            logger.warning(f"TXID '{txid}' not found in database.")
             return (
                 "<h2>⚠️ Trade Snapshot Not Found</h2>"
                 "<p>This transaction ID may have expired or hasn't been posted yet.</p>"
                 "<p><a href='/'>Return Home</a></p>",
                 404,
             )
-        
+
         trade_data = dict(result._mapping)
-        return render_template('log_template.html', trade=trade_data)
-    
+        trade_data["time_ago"] = time_ago(trade_data.get("posted_at"))
+        return render_template("log_template.html", log=trade_data)
+
     except Exception as e:
         logger.error(f"Error while fetching log for {txid}: {e}", exc_info=True)
         return (
@@ -132,13 +138,19 @@ def show_log(txid):
             500,
         )
 
-# ✅ Error handlers
+# ----------------------------------------------------------------------
+# Error handlers
+# ----------------------------------------------------------------------
 @app.errorhandler(404)
 def page_not_found(e):
-    return render_template('404.html'), 404
+    return render_template("404.html"), 404
 
 @app.errorhandler(500)
 def server_error(e):
-    return "<h1>500 - Internal Server Error</h1><p>An error occurred. Please check the application logs for details.</p>", 500
+    return (
+        "<h1>500 - Internal Server Error</h1>"
+        "<p>An error occurred. Please check the application logs for details.</p>",
+        500,
+    )
 
-logger.info("Web server setup is complete. Gunicorn will now manage the application.")
+logger.info("✅ Web server setup complete — ready for Gunicorn or Flask run.")
