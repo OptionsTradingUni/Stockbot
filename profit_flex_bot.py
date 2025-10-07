@@ -1133,114 +1133,97 @@ import requests # Used to download a professional font
 # ===============================
 # BROKER CARD GENERATOR (Profit / Loss)
 # ===============================
-import io
-import random
+# ===============================
+# BROKER CARD GENERATOR (Profit / Loss)
+# ===============================
+import io, random
 from PIL import Image, ImageDraw, ImageFont
 
-def get_font(size, weight="Regular"):
-    """
-    Load safe local fonts (no downloads needed).
-    """
+def _font(size, weight="Regular"):
     try:
         if "Bold" in weight:
             return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
-        else:
-            return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
     except:
         return ImageFont.load_default()
 
-def generate_profit_card(symbol, profit, roi, deposit, trader_name="TraderX"):
-    """
-    Generates a professional, broker-style profit or loss image with large, readable text.
-    """
-    # --- Layout ---
+def generate_broker_card(symbol, profit, roi, deposit, trader_name="TraderX"):
     scale = 2
     W, H = 1200, 450
     img_w, img_h = W * scale, H * scale
 
-    # --- Colors ---
-    BG_GRADIENT_START = (20, 22, 38)
-    BG_GRADIENT_END = (38, 41, 64)
-    TEXT_COLOR = (235, 235, 255)
-    TEXT_SECONDARY = (150, 155, 180)
-    PROFIT_COLOR = (18, 201, 155)
-    LOSS_COLOR = (239, 68, 68)
-    SYMBOL_BG_COLOR = (55, 65, 81)
+    BG0 = (20, 22, 38)
+    BG1 = (38, 41, 64)
+    TXT = (235, 235, 255)
+    SUB = (150, 155, 180)
+    GREEN = (18, 201, 155)
+    RED = (239, 68, 68)
+    CHIP = (55, 65, 81)
 
-    # --- Fonts (Increased Sizes) ---
-    font_light = get_font(40 * scale) # Was 28
-    font_reg = get_font(42 * scale)   # Was 32
-    font_med = get_font(55 * scale)   # Was 40
-    font_bold = get_font(130 * scale, weight="Bold") # Was 90
-    font_symbol = get_font(50 * scale, weight="Bold") # Was 36
+    f_light  = _font(28*scale, "Light")
+    f_reg    = _font(32*scale, "Regular")
+    f_med    = _font(40*scale, "Bold")   # slightly heavier for header
+    f_big    = _font(90*scale, "Bold")
+    f_symbol = _font(36*scale, "Bold")
 
-    # --- Canvas ---
     img = Image.new("RGB", (img_w, img_h))
     draw = ImageDraw.Draw(img)
-
-    # Gradient background
+    # gradient bg
     for y in range(img_h):
-        r = int(BG_GRADIENT_START[0] + (BG_GRADIENT_END[0] - BG_GRADIENT_START[0]) * (y / img_h))
-        g = int(BG_GRADIENT_START[1] + (BG_GRADIENT_END[1] - BG_GRADIENT_START[1]) * (y / img_h))
-        b = int(BG_GRADIENT_START[2] + (BG_GRADIENT_END[2] - BG_GRADIENT_START[2]) * (y / img_h))
-        draw.line([(0, y), (img_w, y)], fill=(r, g, b))
+        t = y / img_h
+        r = int(BG0[0] + (BG1[0]-BG0[0])*t)
+        g = int(BG0[1] + (BG1[1]-BG0[1])*t)
+        b = int(BG0[2] + (BG1[2]-BG0[2])*t)
+        draw.line([(0,y),(img_w,y)], fill=(r,g,b))
 
-    pad = 70 * scale
+    pad = 60*scale
 
-    # --- Header (Symbol Circle + Trader Name) ---
-    circle_d = 100 * scale # Was 80
-    draw.ellipse([(pad, pad), (pad + circle_d, pad + circle_d)], fill=SYMBOL_BG_COLOR)
-    draw.text((pad + circle_d / 2, pad + circle_d / 2), symbol, fill=TEXT_COLOR, font=font_symbol, anchor="mm")
+    # symbol chip
+    d = 80*scale
+    draw.ellipse([(pad,pad),(pad+d,pad+d)], fill=CHIP)
+    draw.text((pad+d/2, pad+d/2), symbol.upper(), fill=TXT, font=f_symbol, anchor="mm")
 
-    draw.text((pad + circle_d + 35 * scale, pad + 25 * scale), trader_name, fill=TEXT_COLOR, font=font_med, anchor="ls")
-    draw.text((pad + circle_d + 35 * scale, pad + 85 * scale), "Verified Signal Provider", fill=TEXT_SECONDARY, font=font_light, anchor="ls")
+    # trader lines
+    draw.text((pad+d+30*scale, pad+15*scale), trader_name, fill=TXT, font=f_med, anchor="ls")
+    draw.text((pad+d+30*scale, pad+65*scale), "Verified Signal Provider", fill=SUB, font=f_light, anchor="ls")
 
-    # --- Profit Section ---
-    profit_prefix = "+" if profit >= 0 else ""
-    profit_str = f"{profit_prefix}${abs(profit):,.2f}"
-    roi_str = f"{roi:,.2f}% ROI"
-    profit_fill = PROFIT_COLOR if profit >= 0 else LOSS_COLOR
+    # PnL block
+    pnl_color = GREEN if profit >= 0 else RED
+    pnl_prefix = "+" if profit >= 0 else "-"
+    pnl_str = f"{pnl_prefix}${abs(profit):,.2f}"
+    roi_str = f"{roi:+.2f}% ROI"
 
-    draw.text((pad, img_h / 2 + 30 * scale), profit_str, fill=profit_fill, font=font_bold, anchor="ls")
-    profit_w = draw.textlength(profit_str, font=font_bold)
-    draw.text((pad + profit_w + 30 * scale, img_h / 2 + 45 * scale), roi_str, fill=TEXT_SECONDARY, font=font_med, anchor="ls")
+    draw.text((pad, img_h/2 + 10*scale), pnl_str, fill=pnl_color, font=f_big, anchor="ls")
+    w = draw.textlength(pnl_str, font=f_big)
+    draw.text((pad + w + 20*scale, img_h/2 + 20*scale), roi_str, fill=SUB, font=f_med, anchor="ls")
 
-    # --- Chart (Right Side) ---
-    chart_x, chart_y = img_w * 0.55, pad
-    chart_w, chart_h = img_w - chart_x - pad, img_h - (pad * 2)
+    # simple “area” chart to the right
+    cx, cy = img_w*0.55, pad
+    cw, ch = img_w - cx - pad, img_h - (pad*2)
+    pts = []
+    n = 30
+    for i in range(n):
+        base = ch * (1 - i/(n-1))
+        jitter = random.uniform(-0.15,0.15)*ch
+        y = cy + base + jitter
+        if i == n-1: y = cy + 6  # end high
+        x = cx + (cw/(n-1))*i
+        pts.append((x,y))
+    overlay = Image.new("RGBA", (img_w, img_h), (0,0,0,0))
+    odraw = ImageDraw.Draw(overlay)
+    poly = pts + [(cx+cw, cy+ch), (cx, cy+ch)]
+    odraw.polygon(poly, fill=pnl_color + (60,))
+    odraw.line(pts, fill=pnl_color, width=int(4*scale))
+    img.paste(overlay, (0,0), overlay)
 
-    points = []
-    num_points = 30
-    for i in range(num_points):
-        base_height = chart_h * (1 - (i / (num_points -1))) # Trend up
-        volatility = chart_h * (random.uniform(-0.1, 0.1) if i < num_points -1 else 0)
-        final_y = chart_y + base_height + volatility
-        points.append((chart_x + (chart_w / (num_points - 1)) * i, final_y))
+    # footer
+    draw.text((pad, img_h - pad), f"Initial Deposit: ${deposit:,.2f}", fill=SUB, font=f_reg, anchor="ls")
 
-    poly_points = points[:] + [(chart_x + chart_w, chart_y + chart_h), (chart_x, chart_y + chart_h)]
-    area_fill = profit_fill + (60,)
-
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    draw_overlay = ImageDraw.Draw(overlay)
-    draw_overlay.polygon(poly_points, fill=area_fill)
-    # Bolder chart line
-    draw_overlay.line(points, fill=profit_fill, width=int(6 * scale))
-    img.paste(overlay, (0, 0), overlay)
-
-    # --- Footer with Timestamp ---
-    deposit_text = f"Initial Deposit: ${deposit:,.2f}"
-    timestamp_text = f"Posted: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
-    
-    draw.text((pad, img_h - pad), deposit_text, fill=TEXT_SECONDARY, font=font_reg, anchor="ls")
-    draw.text((img_w - pad, img_h - pad), timestamp_text, fill=TEXT_SECONDARY, font=font_reg, anchor="rs")
-
-    # --- Final Render ---
-    final_img = img.resize((W, H), Image.Resampling.LANCZOS)
+    out = img.resize((W,H), Image.Resampling.LANCZOS)
     buf = io.BytesIO()
-    final_img.save(buf, format="PNG", quality=95)
+    out.save(buf, format="PNG", quality=95)
     buf.seek(0)
     return buf
-
 # ======================
 # Short caption fallback
 # ======================
