@@ -88,6 +88,37 @@ def determine_direction(roi, simulated=True):
         direction = "BUY" if roi >= 0 else "SELL"
     return roi, direction
 
+# --- NEW: Underlying resolver for options pricing ---
+def resolve_underlying_for_options(symbol: str) -> str:
+    """
+    Maps common options tickers or shorthand symbols to their underlying asset.
+    Ensures we can fetch valid yfinance data.
+    """
+    s = symbol.upper().strip()
+
+    # Common mappings for options-based tickers
+    underlying_map = {
+        "SPX": "SPY",      # S&P 500 index options use SPY ETF
+        "NDX": "QQQ",      # Nasdaq 100 index options
+        "RUT": "IWM",      # Russell 2000 options
+        "VIX": "^VIX",     # Volatility index options
+        "TSLAO": "TSLA",   # Tesla options (sample)
+        "AAPL0": "AAPL",   # Apple options (sample)
+        "QQQO": "QQQ",     # QQQ options (ETF options)
+        "METAO": "META",   # Meta options
+        "MSFTO": "MSFT",   # Microsoft options
+        "NVDAO": "NVDA",   # Nvidia options
+        "AMZO": "AMZN",    # Amazon options
+        "SPYO": "SPY",     # SPY options
+        "BAO": "BA",       # Boeing options
+        "GOOGL0": "GOOGL", # Alphabet options
+        "NFLXO": "NFLX",   # Netflix options
+        "AMD0": "AMD",     # AMD options
+        "QQQ": "QQQ",      # fallback ETF
+    }
+
+    # Default fallback → return symbol if known or SPY
+    return underlying_map.get(s, s if s in STOCK_SYMBOLS else "SPY")
 # =========================
 # 🌐 HYBRID MARKET DATA FETCHER
 # (Stocks = yfinance / Crypto = Coinbase→CoinGecko→Simulated)
@@ -102,6 +133,21 @@ def get_market_data(symbol):
     """
     s = symbol.upper().strip()
 
+         # --- OPTIONS → fetch underlying live data via yfinance ---
+    if s in OPTIONS_SYMBOLS:
+        try:
+            underlying = resolve_underlying_for_options(s)
+            ticker = yf.Ticker(underlying)
+            data = ticker.history(period="2d", interval="1h")
+            if data.empty:
+                raise ValueError("No underlying data.")
+            current_price = float(data["Close"].iloc[-1])
+            price_24h_ago = float(data["Close"].iloc[0])
+            pct_change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
+            logger.info(f"📈 (OPTIONS) {s} → {underlying} @ ${current_price:.2f} ({pct_change_24h:+.2f}%)")
+            return (current_price, price_24h_ago, pct_change_24h)
+        except Exception as e:
+            logger.warning(f"⚠️ Options fetch failed for {s}: {e}")
     # ------------------------
     # 1️⃣ STOCKS → YFINANCE
     # ------------------------
@@ -190,6 +236,7 @@ def generate_entry_exit(symbol, roi, live_price=None):
     - Stocks → yfinance
     - Crypto → Coinbase → CoinGecko → Simulated
     - Meme coins (NIKY/DEW) → Simulated only
+    - Options → Underlying via yfinance (if supported)
     If `live_price` is passed, it's used as the current/exit price.
     """
     s = symbol.upper().strip()
@@ -248,7 +295,23 @@ def generate_entry_exit(symbol, roi, live_price=None):
                         exit_price = random.uniform(0.001, 500)
 
         # ------------------------
-        # 3️⃣ SIMULATED FALLBACK
+        # 3️⃣ OPTIONS (Underlying Pricing)
+        # ------------------------
+        elif s in OPTIONS_SYMBOLS:
+            try:
+                underlying = resolve_underlying_for_options(s)
+                ticker = yf.Ticker(underlying)
+                data = ticker.history(period="2d", interval="1h")
+                if not data.empty:
+                    exit_price = float(data["Close"].iloc[-1])
+                else:
+                    exit_price = random.uniform(100, 5000)
+            except Exception as e:
+                logger.warning(f"⚠️ Options fallback for {s}: {e}")
+                exit_price = random.uniform(100, 5000)
+
+        # ------------------------
+        # 4️⃣ SIMULATED FALLBACK
         # ------------------------
         else:
             exit_price = random.uniform(10, 500)
@@ -270,20 +333,101 @@ def generate_entry_exit(symbol, roi, live_price=None):
         exit_price = round(random.uniform(10, 500), 6)
         entry_price = round(exit_price / (1 + roi / 100.0), 6)
         return entry_price, exit_price
+
+
+# ---------------------------------------------------------------------------
+# NEW SECTION: Reversible Entry/Exit + Chooser
+# ---------------------------------------------------------------------------
+
+def generate_entry_exit_reversible(symbol, roi, live_price=None):
+    """
+    Alternative mode for more natural trading logs.
+    Sometimes entry = live price and exit = small bump (+/- 2,5,10,15),
+    or reversed (exit = live, entry derived by ROI).
+    """
+    s = symbol.upper().strip()
+    increments = [2, 5, 10, 15]
+
+    # Base price setup
+    if live_price is not None:
+        base = float(live_price)
+    else:
+        try:
+            current_price, _, _ = get_market_data(s)
+            base = float(current_price)
+        except Exception:
+            base = random.uniform(20, 500)
+
+    # For very tiny assets (e.g. 0.000x coins)
+    if base < 1:
+        bump_pct = random.choice([0.5, 1, 2, 3]) * (1 if random.random() < 0.7 else -1)
+        if random.random() < 0.5:
+            entry = round(base, 6)
+            exit_ = round(base * (1 + bump_pct / 100), 6)
+        else:
+            exit_ = round(base, 6)
+            entry = round(exit_ / (1 + roi / 100.0), 6)
+            if entry <= 0:
+                entry = round(exit_ * random.uniform(0.8, 0.98), 6)
+        return entry, exit_
+
+    # Normal assets (stocks, options, large-cap crypto)
+    step = random.choice(increments if random.random() < 0.7 else [10, 15])
+    if random.random() < 0.5:
+        # Mode A: Entry = live, Exit = small bump
+        direction = 1 if roi >= 0 else (-1 if random.random() < 0.8 else 1)
+        exit_ = round(base + direction * step, 2)
+        entry = round(base, 2)
+    else:
+        # Mode B: Exit = live, Entry derived from ROI (classic)
+        exit_ = round(base, 2)
+        entry = round(exit_ / (1 + roi / 100.0), 6)
+        if entry <= 0 or abs(roi) > 800:
+            entry = round(exit_ * random.uniform(0.85, 0.98), 6)
+
+    return entry, exit_
+
+
+def choose_entry_exit(symbol, roi, live_price=None, reversible_share=0.22):
+    """
+    Randomly decides whether to use the reversible generator (~45% of trades)
+    or the original ROI-based version.
+    """
+    if random.random() < reversible_share:
+        return generate_entry_exit_reversible(symbol, roi, live_price)
+    return generate_entry_exit(symbol, roi, live_price)
       
 
 def pick_broker_for_symbol(symbol):
     """Return a realistic broker/exchange name depending on symbol type."""
-    s = symbol.upper()
+    s = symbol.upper().strip()
+
     if s in STOCK_SYMBOLS:
-        return random.choice(["Robinhood", "Webull", "E*TRADE", "Charles Schwab", "Fidelity"])
+        return random.choice([
+            "Robinhood", "Webull", "E*TRADE",
+            "Charles Schwab", "Fidelity"
+        ])
+
     elif s in CRYPTO_SYMBOLS:
-        return random.choice(["Binance", "Coinbase", "Kraken", "Bybit", "OKX", "Bitget"])
+        return random.choice([
+            "Binance", "Coinbase", "Kraken",
+            "Bybit", "OKX", "Bitget"
+        ])
+
     elif s in MEME_COINS:
-        return random.choice(["Uniswap", "Raydium", "PancakeSwap", "Jupiter", "DEXTools"])
+        return random.choice([
+            "Uniswap", "Raydium", "PancakeSwap",
+            "Jupiter", "DEXTools"
+        ])
+
+    elif s in OPTIONS_SYMBOLS:
+        return random.choice([
+            "Thinkorswim", "Tastyworks", "Interactive Brokers",
+            "E*TRADE", "Webull Options"
+        ])
+
     else:
         return "Verified Exchange"
-      
       
 def init_traders_if_needed():
     """Ensure traders table has at least basic sample users after reset."""
@@ -304,36 +448,47 @@ def init_traders_if_needed():
 
 def save_trade_log(
     txid, symbol, trader_name, deposit, profit, roi, strategy, reason,
-    entry_price=None, exit_price=None, quantity=None, commission=None, slippage=None, direction=None
+    entry_price=None, exit_price=None, quantity=None, commission=None,
+    slippage=None, direction=None
 ):
-    """Save each posted trade to the database with realistic execution metrics and correct broker mapping."""
+    """
+    Save each posted trade to the database with realistic execution metrics,
+    accurate broker mapping, and full auditing fields.
+    """
     try:
-        symbol_upper = symbol.upper()
+        symbol_upper = symbol.upper().strip()
 
-        # --- Smart Broker Mapping (realistic by asset type) ---
+        # --- Smart Broker Mapping (by asset type) ---
         if symbol_upper in STOCK_SYMBOLS:
             broker_name = random.choice([
-                "Robinhood", "Webull", "E*TRADE", "Charles Schwab", "Fidelity"
+                "Robinhood", "Webull", "E*TRADE",
+                "Charles Schwab", "Fidelity"
             ])
         elif symbol_upper in CRYPTO_SYMBOLS:
             broker_name = random.choice([
-                "Binance", "Coinbase", "Kraken", "Bybit", "OKX", "Bitget"
+                "Binance", "Coinbase", "Kraken",
+                "Bybit", "OKX", "Bitget"
             ])
         elif symbol_upper in MEME_COINS:
             broker_name = random.choice([
-                "Uniswap", "Raydium", "PancakeSwap", "Jupiter", "DEXTools"
+                "Uniswap", "Raydium", "PancakeSwap",
+                "Jupiter", "DEXTools"
+            ])
+        elif symbol_upper in OPTIONS_SYMBOLS:
+            broker_name = random.choice([
+                "Thinkorswim", "Tastyworks", "Interactive Brokers",
+                "E*TRADE", "Webull Options"
             ])
         else:
             broker_name = "Verified Exchange"
 
-        # --- Generate or reuse values if not provided ---
+        # --- Generate or reuse trade details ---
         entry_price = entry_price or round(random.uniform(10, 350), 4)
         exit_price = exit_price or round(entry_price * (1 + roi / 100), 4)
         quantity = quantity or round(deposit / entry_price, 6)
         total_value_exit = round(quantity * exit_price, 2)
-        commission = commission or round(deposit * 0.001, 2)          # 0.1% fee
-        slippage = slippage or round(random.uniform(0.01, 0.15), 4)   # 0.01–0.15%
-        
+        commission = commission or round(deposit * 0.001, 2)        # 0.1% fee
+        slippage = slippage or round(random.uniform(0.01, 0.15), 4) # 0.01–0.15%
 
         # --- Insert into DB ---
         with engine.begin() as conn:
@@ -359,16 +514,15 @@ def save_trade_log(
                 )
             )
 
-        # --- Logging ---
+        # --- Log confirmation ---
         logger.info(
             f"✅ Trade saved: {txid} | {symbol_upper} | {broker_name} | "
-            f"PnL {profit:+.2f} | ROI {roi:+.2f}% | Entry {entry_price} | Exit {exit_price} | Qty {quantity}"
+            f"PnL {profit:+.2f} | ROI {roi:+.2f}% | Entry {entry_price} | "
+            f"Exit {exit_price} | Qty {quantity}"
         )
 
     except Exception as e:
         logger.error(f"⚠️ Failed to save trade log {txid}: {e}", exc_info=True)
-
-import requests
 
 # =========================
 # 🔧 UNIVERSAL SYMBOL RESOLVER
@@ -515,7 +669,13 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 STOCK_SYMBOLS = [s.strip() for s in os.getenv("STOCK_SYMBOLS", "TSLA,AAPL,NVDA,MSFT,AMZN,GOOGL,META").split(",")]
 CRYPTO_SYMBOLS = [s.strip() for s in os.getenv("CRYPTO_SYMBOLS", "BTC,ETH,SOL").split(",")]
 MEME_COINS = [s.strip() for s in os.getenv("MEME_COINS", "NIKY").split(",")]
-ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
+# --- NEW: OPTIONS trading tickers (SPX, SPY, QQQ, etc.) ---
+OPTIONS_SYMBOLS = [s.strip() for s in os.getenv(
+    "OPTIONS_SYMBOLS",
+    "SPX,SPY,QQQ,TSLA,AMZN,NVDA"
+).split(",")]
+# ✅ Merge all into one master list
+ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS + OPTIONS_SYMBOLS
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///profit_flex.db")
 WEBSITE_URL = os.getenv("WEBSITE_URL", "https://optionstradinguni.online/")
 RATE_LIMIT_SECONDS = float(os.getenv("RATE_LIMIT_SECONDS", "5"))
@@ -761,6 +921,8 @@ def generate_profit_scenario(symbol: str):
         deposit = random.randint(200, 7500)
     elif symbol in CRYPTO_SYMBOLS:
         deposit = random.randint(500, 10500)
+    elif symbol in OPTIONS_SYMBOLS:
+        deposit = random.randint(200, 6000)
     else:  # stocks
         deposit = random.randint(1000, 12000)
 
@@ -772,7 +934,9 @@ def generate_profit_scenario(symbol: str):
             roi = round(random.uniform(30, 700), 2)
         elif symbol in CRYPTO_SYMBOLS:
             roi = round(random.uniform(10, 300), 2)
-        else:
+        elif symbol in OPTIONS_SYMBOLS:
+            roi = round(random.uniform(10, 900), 2)
+        else:  # stocks
             roi = round(random.uniform(5, 120), 2)
     else:
         roi = round(random.uniform(-25, -5), 2)
@@ -780,35 +944,65 @@ def generate_profit_scenario(symbol: str):
     # 💰 Calculate profit or loss
     profit = round(deposit * (roi / 100.0), 2)
 
-    # 🧭 Direction (LONG/SHORT)
+    # 🧭 Direction (Bullish/Bearish)
     direction = "Bullish" if roi >= 0 else "Bearish"
 
-    # 📊 Trading style
-    trading_styles = [
-        "Momentum Reversal", "Scalp Strategy", "Swing Entry",
-        "Breakout Play", "Pullback Setup", "News Catalyst",
-        "Range Compression", "Market Analysis", "Dip Buy Setup"
-    ]
-    trading_style = random.choice(trading_styles)
+    # ----------------------------------------------
+    # 🎯 OPTIONS-SPECIFIC STYLES & REASONS
+    # ----------------------------------------------
+    if symbol in OPTIONS_SYMBOLS:
+        trading_styles = [
+            "0DTE Scalping", "Momentum Reversal", "Call Credit Spread",
+            "Put Debit Spread", "Trend Continuation", "VWAP Bounce"
+        ]
+        trading_style = random.choice(trading_styles)
 
-    # 💬 Reason message
-    if roi >= 0:
-        reason = random.choice([
-            "Capitalized on strong breakout momentum.",
-            "Executed near perfect dip entry before rebound.",
-            "Followed institutional flow; profit locked.",
-            "High-volume move aligned with RSI confirmation.",
-            "Used call options to leverage bullish continuation."
-        ])
+        if roi >= 0:
+            reason = random.choice([
+                "Closed 0DTE calls early after momentum continuation.",
+                "Scalped puts on rejection, locked green fast.",
+                "Captured breakout leg before theta decay.",
+                "Rode intraday trend; took profits into strength.",
+                "Sniped reversal near VWAP reclaim."
+            ])
+        else:
+            reason = random.choice([
+                "Theta worked against position; cut quickly.",
+                "Failed breakout; closed before deeper drawdown.",
+                "Vol crush after event; position unwound.",
+                "Rejection at key level invalidated setup.",
+                "Stop triggered as momentum faded."
+            ])
+
+    # ----------------------------------------------
+    # 🧠 NON-OPTIONS STYLES & REASONS
+    # ----------------------------------------------
     else:
-        reason = random.choice([
-            "Stop-loss triggered after failed breakout.",
-            "Bearish engulfing invalidated trade setup.",
-            "Unexpected news event caused downside gap.",
-            "Short-term reversal hit tight stop levels.",
-            "Tight stop triggered; trade closed in red."
-        ])
+        trading_styles = [
+            "Momentum Reversal", "Scalp Strategy", "Swing Entry",
+            "Breakout Play", "Pullback Setup", "News Catalyst",
+            "Range Compression", "Market Analysis", "Dip Buy Setup"
+        ]
+        trading_style = random.choice(trading_styles)
 
+        if roi >= 0:
+            reason = random.choice([
+                "Capitalized on strong breakout momentum.",
+                "Executed near perfect dip entry before rebound.",
+                "Followed institutional flow; profit locked.",
+                "High-volume move aligned with RSI confirmation.",
+                "Used call options to leverage bullish continuation."
+            ])
+        else:
+            reason = random.choice([
+                "Stop-loss triggered after failed breakout.",
+                "Bearish engulfing invalidated trade setup.",
+                "Unexpected news event caused downside gap.",
+                "Short-term reversal hit tight stop levels.",
+                "Tight stop triggered; trade closed in red."
+            ])
+
+    # ✅ Return final scenario
     return deposit, profit, roi, reason, trading_style, direction
     # 🎲 Weighted multipliers: heavy tail for memes, tamer for stocks/crypto
     def weighted_multiplier(is_meme: bool) -> float:
@@ -1310,7 +1504,7 @@ async def profit_posting_loop(app):
                     deposit = random.randint(500, 5000)
                     roi = pct_change_24h
                     profit = round(deposit * (roi / 100.0), 2)
-                    entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
+                    entry_price, exit_price = choose_entry_exit(symbol, roi, live_price=exit_price)  # ✅ fake entry
                     direction = "Bullish" if roi >= 0 else "Bearish"
                     reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move."
                     trading_style = "Market Analysis"
@@ -1321,7 +1515,7 @@ async def profit_posting_loop(app):
 
                 if use_simulated:
                     deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
-                    entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
+                    entry_price, exit_price = choose_entry_exit(symbol, roi, live_price=exit_price)  # ✅ fake entry
                     post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                     break
             else:
@@ -1403,7 +1597,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 deposit = random.randint(500, 5000)
                 roi = pct_change_24h
                 profit = round(deposit * (roi / 100.0), 2)
-                entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
+                entry_price, exit_price = choose_entry_exit(symbol, roi, live_price=exit_price)  # ✅ fake entry
                 direction = "Bullish" if roi >= 0 else "Bearish"
                 reason = f"Capitalized on {pct_change_24h:+.2f}% 24h move."
                 trading_style = "Market Analysis"
@@ -1414,7 +1608,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
             if use_simulated:
                 deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
-                entry_price = round(exit_price / (1 + roi / 100.0), 6)  # ✅ fake entry
+                entry_price, exit_price = choose_entry_exit(symbol, roi, live_price=exit_price)  # ✅ fake entry
                 post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                 break
         else:
