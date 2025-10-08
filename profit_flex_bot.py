@@ -1616,7 +1616,7 @@ async def profit_posting_loop(app):
                     use_simulated = True
                     deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
                     entry_price, exit_price = choose_entry_exit(symbol, roi, live_price=exit_price)
-                    post_title = f"🎯 <b>{symbol} Simulated Trade Report</b>"
+                    post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                     break
             else:
                 logger.warning("All attempts failed — retrying soon.")
@@ -1709,7 +1709,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 use_simulated = True
                 deposit, profit, roi, reason, trading_style, direction = generate_profit_scenario(symbol)
                 entry_price, exit_price = choose_entry_exit(symbol, roi, live_price=exit_price)
-                post_title = f"🎯 <b>{symbol} Simulated Trade Report</b>"
+                post_title = f"🎯 <b>{symbol} Live Market Report</b>"
                 break
         else:
             await update.message.reply_text("⚠️ Failed to fetch data.")
