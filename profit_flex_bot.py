@@ -133,110 +133,195 @@ def resolve_underlying_for_options(symbol: str) -> str:
 # 🌐 HYBRID MARKET DATA FETCHER
 # (Stocks = yfinance / Crypto = Coinbase→CoinGecko→Simulated)
 # =========================
+
+def clean_price(text):
+    try:
+        return float(re.sub(r"[^\d.]", "", text))
+    except:
+        return None
+
+
+# ─────────────────────────────────────────────
+# MAIN MARKET DATA FUNCTION
+# ─────────────────────────────────────────────
 def get_market_data(symbol):
     """
-    Fetch live market data with proper source routing:
-      🟢 Stocks → Yahoo Finance (yfinance)
-      🟢 Crypto / Meme → Coinbase → CoinGecko → simulated fallback
-      🟢 NIKY & DEW → simulated only
-    Returns tuple: (current_price, price_24h_ago, pct_change_24h)
+    Ultra-resilient market data fetcher (no API keys).
+    Works for: Options, Stocks, Crypto, Meme coins.
+    Sources: yfinance, yahoo_fin, StockAnalysis, TradingView,
+             Investing.com, Coinbase, CoinGecko, simulation fallback.
     """
     s = symbol.upper().strip()
 
-         # --- OPTIONS → fetch underlying live data via yfinance ---
+    # -----------------------------------------
+    # 1️⃣ OPTIONS → Try Multiple Layers
+    # -----------------------------------------
     if s in OPTIONS_SYMBOLS:
+        underlying = resolve_underlying_for_options(s)
+
+        # --- Try yahoo_fin.options (chain existence) ---
         try:
-            underlying = resolve_underlying_for_options(s)
-            ticker = yf.Ticker(underlying)
-            data = ticker.history(period="2d", interval="1h")
-            if data.empty:
-                raise ValueError("No underlying data.")
-            current_price = float(data["Close"].iloc[-1])
-            price_24h_ago = float(data["Close"].iloc[0])
-            pct_change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
-            logger.info(f"📈 (OPTIONS) {s} → {underlying} @ ${current_price:.2f} ({pct_change_24h:+.2f}%)")
-            return (current_price, price_24h_ago, pct_change_24h)
+            calls = yf_opt.get_calls(underlying)
+            if not calls.empty:
+                mid = calls["Last Price"].dropna().mean()
+                if mid and mid > 0:
+                    cp = round(mid * random.uniform(0.95, 1.05), 2)
+                    p24 = cp * random.uniform(0.96, 1.03)
+                    chg = ((cp - p24) / p24) * 100
+                    logger.info(f"🧾 yahoo_fin options → {s} ${cp} ({chg:+.2f}%)")
+                    return cp, p24, chg
         except Exception as e:
-            logger.warning(f"⚠️ Options fetch failed for {s}: {e}")
-    # ------------------------
-    # 1️⃣ STOCKS → YFINANCE
-    # ------------------------
+            logger.warning(f"⚠️ yahoo_fin options failed for {s}: {e}")
+
+        # --- Try yfinance underlying price ---
+        try:
+            t = yf.Ticker(underlying)
+            data = t.history(period="2d", interval="1h")
+            if not data.empty:
+                cp = float(data["Close"].iloc[-1])
+                p24 = float(data["Close"].iloc[0])
+                chg = ((cp - p24) / p24) * 100
+                logger.info(f"💼 yfinance (underlying) → {s} {underlying} ${cp:.2f} ({chg:+.2f}%)")
+                return cp, p24, chg
+        except Exception as e:
+            logger.warning(f"⚠️ yfinance failed for options {s}: {e}")
+
+        # --- Try StockAnalysis fallback ---
+        try:
+            url = f"https://stockanalysis.com/stocks/{underlying.lower()}/"
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+            soup = BeautifulSoup(r.text, "html.parser")
+            el = soup.find("span", {"class": "value"})
+            if el:
+                cp = clean_price(el.text)
+                p24 = cp * random.uniform(0.97, 1.03)
+                chg = ((cp - p24) / p24) * 100
+                logger.info(f"📊 StockAnalysis (opt) → {s} ${cp} ({chg:+.2f}%)")
+                return cp, p24, chg
+        except Exception as e:
+            logger.warning(f"⚠️ StockAnalysis opt fallback failed: {e}")
+
+        # --- Try TradingView fallback ---
+        try:
+            url = f"https://www.tradingview.com/symbols/{underlying}/"
+            r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=5)
+            m = re.search(r'"price":(\d+(\.\d+)?)', r.text)
+            if m:
+                cp = float(m.group(1))
+                p24 = cp * random.uniform(0.97, 1.03)
+                chg = ((cp - p24) / p24) * 100
+                logger.info(f"📈 TradingView (opt) → {s} ${cp:.2f} ({chg:+.2f}%)")
+                return cp, p24, chg
+        except Exception as e:
+            logger.warning(f"⚠️ TradingView opt failed: {e}")
+
+    # -----------------------------------------
+    # 2️⃣ STOCKS — yfinance → scrapers → fallback
+    # -----------------------------------------
     if s in STOCK_SYMBOLS:
         try:
             ticker = yf.Ticker(s)
             data = ticker.history(period="2d", interval="1h")
-            if data.empty:
-                raise ValueError("No data from yfinance.")
-            current_price = float(data["Close"].iloc[-1])
-            price_24h_ago = float(data["Close"].iloc[0])
-            pct_change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
-            logger.info(f"📈 yfinance → {s} @ ${current_price:.4f} ({pct_change_24h:+.2f}%)")
-            return (current_price, price_24h_ago, pct_change_24h)
+            if not data.empty:
+                cp = float(data["Close"].iloc[-1])
+                p24 = float(data["Close"].iloc[0])
+                chg = ((cp - p24) / p24) * 100
+                logger.info(f"📊 yfinance → {s} ${cp:.2f} ({chg:+.2f}%)")
+                return cp, p24, chg
         except Exception as e:
             logger.warning(f"⚠️ yfinance failed for {s}: {e}")
-            # fallback below
 
-    # ------------------------
-    # 2️⃣ MEME COINS NIKY / DEW → SIMULATED ONLY
-    # ------------------------
-    if s in ["NIKY", "DEW"]:
-        base_price = random.uniform(0.0001, 0.05)
-        pct_change = random.uniform(-5, 15)
-        open_price = base_price / (1 + pct_change / 100)
-        logger.info(f"🎭 Simulated meme coin → {s} @ ${base_price:.4f} ({pct_change:+.2f}%)")
-        return (base_price, open_price, pct_change)
+        # StockAnalysis
+        try:
+            url = f"https://stockanalysis.com/stocks/{s.lower()}/"
+            r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=5)
+            soup = BeautifulSoup(r.text, "html.parser")
+            el = soup.find("span", {"class":"value"})
+            if el:
+                cp = clean_price(el.text)
+                p24 = cp * random.uniform(0.97, 1.03)
+                chg = ((cp - p24) / p24) * 100
+                logger.info(f"📈 StockAnalysis → {s} ${cp:.2f} ({chg:+.2f}%)")
+                return cp, p24, chg
+        except Exception as e:
+            logger.warning(f"⚠️ StockAnalysis failed: {e}")
 
-    # ------------------------
-    # 3️⃣ CRYPTO → COINBASE
-    # ------------------------
+        # TradingView
+        try:
+            url = f"https://www.tradingview.com/symbols/{s}/"
+            r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, timeout=5)
+            m = re.search(r'"price":(\d+(\.\d+)?)', r.text)
+            if m:
+                cp = float(m.group(1))
+                p24 = cp * random.uniform(0.98, 1.02)
+                chg = ((cp - p24) / p24) * 100
+                logger.info(f"📉 TradingView → {s} ${cp:.2f} ({chg:+.2f}%)")
+                return cp, p24, chg
+        except Exception as e:
+            logger.warning(f"⚠️ TradingView failed: {e}")
+
+        # Investing.com fallback
+        try:
+            inv = f"https://www.investing.com/equities/{s.lower()}"
+            r = requests.get(inv, headers={"User-Agent":"Mozilla/5.0"}, timeout=5)
+            m = re.search(r'currentPrice":(\d+(\.\d+)?)', r.text)
+            if m:
+                cp = float(m.group(1))
+                p24 = cp * random.uniform(0.98, 1.02)
+                chg = ((cp - p24) / p24) * 100
+                logger.info(f"💹 Investing.com → {s} ${cp:.2f} ({chg:+.2f}%)")
+                return cp, p24, chg
+        except Exception as e:
+            logger.warning(f"⚠️ Investing.com failed: {e}")
+
+    # -----------------------------------------
+    # 3️⃣ CRYPTO / MEME → Coinbase → CoinGecko
+    # -----------------------------------------
     if s in CRYPTO_SYMBOLS or s in MEME_COINS:
         try:
-            pair = f"{s}-USD"
-            url = f"https://api.coinbase.com/v2/prices/{pair}/spot"
-            r = requests.get(url, timeout=5)
+            r = requests.get(f"https://api.coinbase.com/v2/prices/{s}-USD/spot", timeout=5)
             if r.status_code == 200:
-                current_price = float(r.json()["data"]["amount"])
-
-                # Approximate 24h open
-                hist_url = f"https://api.coinbase.com/v2/prices/{pair}/historic?period=day"
-                rh = requests.get(hist_url, timeout=5)
-                if rh.status_code == 200 and "data" in rh.json():
-                    prices = [float(p["price"]) for p in rh.json()["data"].get("prices", [])]
-                    price_24h_ago = prices[-1] if len(prices) > 1 else current_price
-                else:
-                    price_24h_ago = current_price * random.uniform(0.97, 1.03)
-
-                pct_change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
-                logger.info(f"💰 Coinbase → {s} @ ${current_price:.4f} ({pct_change_24h:+.2f}%)")
-                return (current_price, price_24h_ago, pct_change_24h)
+                cp = float(r.json()["data"]["amount"])
+                pct = random.uniform(-3, 3)
+                p24 = cp / (1 + pct / 100)
+                logger.info(f"💰 Coinbase → {s} ${cp:.4f} ({pct:+.2f}%)")
+                return cp, p24, pct
         except Exception as e:
             logger.warning(f"⚠️ Coinbase failed for {s}: {e}")
 
-        # ------------------------
-        # 4️⃣ COINGECKO FALLBACK
-        # ------------------------
         try:
             cg_id = CRYPTO_ID_MAP.get(s)
             if cg_id:
-                data = cg.get_price(ids=cg_id, vs_currencies="usd", include_24hr_change=True)
-                if cg_id in data:
-                    current_price = float(data[cg_id]["usd"])
-                    pct_change_24h = data.get(cg_id, {}).get("usd_24h_change", random.uniform(-3, 3))
-                    price_24h_ago = current_price / (1 + pct_change_24h / 100)
-                    logger.info(f"🦎 CoinGecko → {s} @ ${current_price:.4f} ({pct_change_24h:+.2f}%)")
-                    return (current_price, price_24h_ago, pct_change_24h)
+                url = f"https://api.coingecko.com/api/v3/simple/price?ids={cg_id}&vs_currencies=usd&include_24hr_change=true"
+                r = requests.get(url, timeout=5)
+                if r.status_code == 200:
+                    d = r.json()[cg_id]
+                    cp = float(d["usd"])
+                    pct = d.get("usd_24h_change", random.uniform(-3, 3))
+                    p24 = cp / (1 + pct / 100)
+                    logger.info(f"🦎 CoinGecko → {s} ${cp:.4f} ({pct:+.2f}%)")
+                    return cp, p24, pct
         except Exception as e:
             logger.warning(f"⚠️ CoinGecko failed for {s}: {e}")
 
-    # ------------------------
-    # 5️⃣ SIMULATED FALLBACK (FINAL)
-    # ------------------------
-    base_price = random.uniform(0.001, 500)
-    pct_change = random.uniform(-10, 15)
-    open_price = base_price / (1 + pct_change / 100)
-    logger.info(f"🧩 Simulated fallback → {s} @ ${base_price:.4f} ({pct_change:+.2f}%)")
-    return (base_price, open_price, pct_change)
+    # -----------------------------------------
+    # 4️⃣ NIKY / DEW → Simulated Only
+    # -----------------------------------------
+    if s in ["NIKY", "DEW"]:
+        base = random.uniform(0.0001, 0.05)
+        pct = random.uniform(-8, 15)
+        openp = base / (1 + pct / 100)
+        logger.info(f"🎭 Simulated meme coin {s} ${base:.6f} ({pct:+.2f}%)")
+        return base, openp, pct
 
+    # -----------------------------------------
+    # 5️⃣ FINAL SIMULATED FALLBACK
+    # -----------------------------------------
+    base = random.uniform(0.5, 500)
+    pct = random.uniform(-10, 15)
+    openp = base / (1 + pct / 100)
+    logger.info(f"🧩 Fallback sim → {s} ${base:.2f} ({pct:+.2f}%)")
+    return base, openp, pct
 # =========================
 # 🎯 ENTRY & EXIT GENERATOR (Matches Hybrid Fetcher)
 # =========================
