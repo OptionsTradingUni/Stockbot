@@ -36,7 +36,7 @@ from telegram.constants import ChatMemberStatus
 # --- NEW: Import market data libraries ---
 import yfinance as yf
 from pycoingecko import CoinGeckoAPI
-
+import requests
 
 # Compatibility alias
 def generate_txid():
