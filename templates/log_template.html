@@ -180,16 +180,31 @@
     </div>
     {% endif %}
 
-    <div class="section">
-      <h2>Execution Metrics</h2>
-      <div class="grid">
-        <div class="item"><strong>Entry Price</strong><span>${{ "%.4f"|format(log.entry_price or 0) }}</span></div>
-        <div class="item"><strong>Exit Price</strong><span>${{ "%.4f"|format(log.exit_price or 0) }}</span></div>
-        <div class="item"><strong>Quantity</strong><span>{{ "%.6f"|format(log.quantity or 1.0) }}</span></div>
-        <div class="item"><strong>Fees / Commission</strong><span>${{ "%.2f"|format(log.commission or 0) }}</span></div>
-        <div class="item"><strong>Slippage</strong><span>{{ "%.4f"|format(log.slippage or 0) }}%</span></div>
-      </div>
+ <div class="section">
+  <h2>Execution Metrics</h2>
+  <div class="grid">
+    <div class="item">
+      <strong>Entry Price</strong>
+      <span>${{ "{:,.8f}".format(log.entry_price or 0).rstrip('0').rstrip('.') }}</span>
     </div>
+    <div class="item">
+      <strong>Exit Price</strong>
+      <span>${{ "{:,.8f}".format(log.exit_price or 0).rstrip('0').rstrip('.') }}</span>
+    </div>
+    <div class="item">
+      <strong>Quantity</strong>
+      <span>{{ "{:,.6f}".format(log.quantity or 1.0).rstrip('0').rstrip('.') }}</span>
+    </div>
+    <div class="item">
+      <strong>Fees / Commission</strong>
+      <span>${{ "{:,.2f}".format(log.commission or 0) }}</span>
+    </div>
+    <div class="item">
+      <strong>Slippage</strong>
+      <span>{{ "{:.4f}".format(log.slippage or 0) }}%</span>
+    </div>
+  </div>
+</div>
 
     <div class="footer">
       ✅ Verified & recorded by <b>Options Trading University</b><br>
