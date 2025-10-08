@@ -48,25 +48,35 @@ cg = CoinGeckoAPI()
 
 
 CRYPTO_ID_MAP = {
-    # Main Crypto
-    "BTC": "bitcoin", 
-    "ETH": "ethereum", 
+    # ===== Main Layer 1 & Layer 2 Coins =====
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
     "SOL": "solana",
-    "DOT": "polkadot",
+    "BNB": "binancecoin",
     "XRP": "ripple",
     "ADA": "cardano",
-    "SUI": "sui",
+    "DOT": "polkadot",
     "AVAX": "avalanche-2",
     "MATIC": "matic-network",
-    "XLM": "stellar", # <-- ADDED
-    
-    # Meme Coins
-    "DOGE": "dogecoin", # <-- ADDED
+    "SUI": "sui",
+    "XLM": "stellar",
+    "LTC": "litecoin",
+    "ARB": "arbitrum",
+    "OP": "optimism",
+    "LINK": "chainlink",
+
+    # ===== Meme Coins =====
+    "DOGE": "dogecoin",
     "SHIB": "shiba-inu",
-    "PEPE": "pepe", 
-    "WIF": "dogwifhat", 
+    "PEPE": "pepe",
+    "WIF": "dogwifhat",
     "BONK": "bonk",
-    "FLOKI": "floki"
+    "FLOKI": "floki",
+    "DEGEN": "degen-base",      # ✅ official on CoinGecko (Base ecosystem)
+    "MOG": "mog-coin",          # ✅ official CoinGecko slug
+    "BRETT": "based-brett",     # ✅ “Based Brett” from Base chain
+    "NIKY": None,               # 🚫 simulated-only coin (not on CoinGecko)
+    "DEW": None                 # 🚫 simulated-only meme coin
 }
 
 # import this to access metadata
@@ -1488,7 +1498,7 @@ async def profit_posting_loop(app):
             # Random wait between posts
             sleep_time = random.randint(15, 40) * 60
             use_simulated = random.random() < 0.7  # 70% simulated
-            all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS
+            all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS + OPTIONS_SYMBOLS
             symbol = random.choice(all_symbols)
 
             for attempt in range(5):
@@ -1581,7 +1591,7 @@ async def manual_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("⏳ Generating manual trade report...")
 
     try:
-        symbol = random.choice(STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS)
+        symbol = random.choice(STOCK_SYMBOLS + CRYPTO_SYMBOLS + OPTIONS_SYMBOLS + MEME_COINS)
         use_simulated = random.random() < 0.7
 
         for attempt in range(5):
