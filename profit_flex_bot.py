@@ -411,17 +411,37 @@ def generate_entry_exit(symbol, roi, live_price=None):
         else:
             exit_price = random.uniform(10, 500)
 
-        # ------------------------
-        # 💹 Compute Entry from ROI
-        # ------------------------
-        entry_price = round(exit_price / (1 + roi / 100.0), 6)
+        # ✅ Safe entry/exit calculation
+        try:
+            ratio = 1 + (roi / 100.0)
+            if ratio <= 0:
+                # Avoid division by negative or zero
+                entry_price = round(exit_price * random.uniform(1.05, 1.25), 6)
+            else:
+                entry_price = round(exit_price / ratio, 6)
+        except Exception:
+            entry_price = round(exit_price * random.uniform(0.9, 1.1), 6)
 
-        # Prevent absurd ratios (e.g. exit 3000x entry)
-        if abs(roi) > 800 or entry_price <= 0:
-            entry_price = round(exit_price * random.uniform(0.8, 0.95), 6)
+        # ✅ Always positive, realistic
+        entry_price = abs(entry_price)
+        exit_price = abs(exit_price)
 
-        # ✅ Return final realistic prices
-        return entry_price, round(exit_price, 6)
+        # For losing trades → entry > exit
+        if roi < 0 and entry_price < exit_price:
+            entry_price, exit_price = exit_price, entry_price
+
+        # Limit crazy scaling (e.g., entry 2, exit 900)
+        if exit_price / entry_price > 50 or entry_price / exit_price > 50:
+            entry_price = round(exit_price * random.uniform(0.9, 1.1), 6)
+
+        # 🧠 Realism guard: limit distance between entry and exit
+        ratio = max(entry_price, exit_price) / max(min(entry_price, exit_price), 1e-6)
+        if ratio > 10:
+            mid = (entry_price + exit_price) / 2
+            entry_price = round(mid * random.uniform(0.9, 1.05), 6)
+            exit_price = round(mid * random.uniform(0.95, 1.1), 6)
+
+        return entry_price, exit_price
 
     except Exception as e:
         logger.warning(f"⚠️ generate_entry_exit failed for {symbol}: {e}")
@@ -433,7 +453,6 @@ def generate_entry_exit(symbol, roi, live_price=None):
 # ---------------------------------------------------------------------------
 # NEW SECTION: Reversible Entry/Exit + Chooser
 # ---------------------------------------------------------------------------
-
 def generate_entry_exit_reversible(symbol, roi, live_price=None):
     """
     Alternative mode for more natural trading logs.
@@ -480,18 +499,36 @@ def generate_entry_exit_reversible(symbol, roi, live_price=None):
         if entry <= 0 or abs(roi) > 800:
             entry = round(exit_ * random.uniform(0.85, 0.98), 6)
 
+    # ✅ Clean up negatives and unrealistic flips
+    entry = abs(entry)
+    exit_ = abs(exit_)
+
+    if roi < 0 and entry < exit_:
+        entry, exit_ = exit_, entry
+
+    # Prevent extreme differences
+    if exit_ / entry > 50 or entry / exit_ > 50:
+        entry = round(exit_ * random.uniform(0.9, 1.1), 6)
+
+    # 🧠 Realism guard: limit distance between entry and exit
+    ratio = max(entry, exit_) / max(min(entry, exit_), 1e-6)
+    if ratio > 10:
+        mid = (entry + exit_) / 2
+        entry = round(mid * random.uniform(0.9, 1.05), 6)
+        exit_ = round(mid * random.uniform(0.95, 1.1), 6)
+
     return entry, exit_
 
 
 def choose_entry_exit(symbol, roi, live_price=None, reversible_share=0.22):
     """
-    Randomly decides whether to use the reversible generator (~45% of trades)
+    Randomly decides whether to use the reversible generator (~22% of trades)
     or the original ROI-based version.
     """
     if random.random() < reversible_share:
         return generate_entry_exit_reversible(symbol, roi, live_price)
     return generate_entry_exit(symbol, roi, live_price)
-      
+
 
 def pick_broker_for_symbol(symbol):
     """Return a realistic broker/exchange name depending on symbol type."""
