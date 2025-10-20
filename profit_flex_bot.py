@@ -112,18 +112,18 @@ def resolve_underlying_for_options(symbol: str) -> str:
         "NDX": "QQQ",      # Nasdaq 100 index options
         "RUT": "IWM",      # Russell 2000 options
         "VIX": "^VIX",     # Volatility index options
-        "TSLAO": "TSLA",   # Tesla options (sample)
-        "AAPL0": "AAPL",   # Apple options (sample)
-        "QQQO": "QQQ",     # QQQ options (ETF options)
-        "METAO": "META",   # Meta options
-        "MSFTO": "MSFT",   # Microsoft options
-        "NVDAO": "NVDA",   # Nvidia options
-        "AMZO": "AMZN",    # Amazon options
-        "SPYO": "SPY",     # SPY options
-        "BAO": "BA",       # Boeing options
-        "GOOGL0": "GOOGL", # Alphabet options
-        "NFLXO": "NFLX",   # Netflix options
-        "AMD0": "AMD",     # AMD options
+        "TSLA": "TSLA",   # Tesla options (sample)
+        "AAPL": "AAPL",   # Apple options (sample)
+        "QQQ": "QQQ",     # QQQ options (ETF options)
+        "META": "META",   # Meta options
+        "MSFT": "MSFT",   # Microsoft options
+        "NVDA": "NVDA",   # Nvidia options
+        "AMZ": "AMZN",    # Amazon options
+        "SPY": "SPY",     # SPY options
+        "BA": "BA",       # Boeing options
+        "GOOGL": "GOOGL", # Alphabet options
+        "NFLX": "NFLX",   # Netflix options
+        "AMD": "AMD",     # AMD options
         "QQQ": "QQQ",      # fallback ETF
     }
 
@@ -1621,9 +1621,9 @@ async def profit_posting_loop(app):
             # 70% → post every 2–15 minutes
             # 30% → post every 20–30 minutes
             if random.random() < 0.7:
-                sleep_time = random.randint(2, 15) * 60
+                sleep_time = random.randint(2, 5) * 60
             else:
-                sleep_time = random.randint(20, 30) * 60
+                sleep_time = random.randint(10, 15) * 60
 
             use_simulated = random.random() < 0.7  # 70% simulated posts
             all_symbols = STOCK_SYMBOLS + CRYPTO_SYMBOLS + MEME_COINS + OPTIONS_SYMBOLS
