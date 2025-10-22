@@ -1686,7 +1686,6 @@ async def profit_posting_loop(app):
                 f"📊 Entry: <b>${entry_price}</b> | Exit: <b>${exit_price}</b>\n"
                 f"📦 Qty: <b>{quantity}</b> | Comm: <b>${commission}</b> | Slip: <b>{slippage}%</b>\n"
                 f"🔥 Strategy: <b>{trading_style}</b> — {reason}\n\n"
-                f"🏆 <b>Leaderboard (Top 10)</b>\n" + "\n".join(rankings) + "\n\n"
                 f"<a href='{log_url}'>Trade execution validated via broker statement (TX#{txid})</a>\n\n"
                 f"💎 <b>Powered by Options Trading University</b>"
             )
