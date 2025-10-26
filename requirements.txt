@@ -27,3 +27,8 @@ numpy
 # Optional (safety & encoding)
 aiohttp
 certifi
+
+#personal auto
+
+telethon==1.34.0
+pytz==2024.1
