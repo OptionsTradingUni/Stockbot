@@ -1,22 +1,24 @@
 import asyncio
 import random
 from telethon import TelegramClient, events, Button
-from telethon.sessions import StringSession
+# from telethon.sessions import StringSession  # <-- CHANGE 1: We don't need StringSession anymore
 from datetime import datetime, timedelta
 import pytz
 
-# --- !! 1. PASTE YOUR KEYS AND SESSION STRING HERE !! ---
-API_ID = 3848094  # <-- Your FIRST account's API ID
-API_HASH = 'b5be7dd84556db235436187271576566' # <-- Your FIRST account's API Hash
+# --- !! 1. PASTE YOUR KEYS AND BOT TOKEN !! ---
+API_ID = 3848094  # <-- Your API ID (Good)
+API_HASH = 'b5be7dd84556db235436187271576566' # <-- Your API Hash (Good)
 
-# <-- 2. PASTE THE FIRST SESSION STRING YOU GENERATED
-SESSION_STRING_1 = '1BJWap1wBu0GxCLqqw-IpLrWSgqSG0Op2aSqmtv5xd0M7t6yrkN3EHMXQFF-YFSkC9wv1mynqGvUNp57jlRfefcEmp_jWQsFNUsRCvyOsnqWjcytjKGlX_w6SCSCxJcNVF6OuI1JyCJgmxgEyETcnLndbz7TAz0ZmtYMDKVDFBVEZ7Rbgs68mqf9wwVRQbrlQpz58Wsq4tEpe8vJPZFOn9BNWqxrPIxp6Gcw6z30OvBH8IyZjG0sjm1mGOxyI906Di5Tyq0WKLNGoeKaXSoWJTNno5L6CaAQm6M3x0Jc1bGaBPdFJ5DBbaddP8pRL6-S6PcS63ESQ5xwB3SU80iL1H8rzREWVhds='
+# --- !! 2. THIS IS YOUR NEW BOT TOKEN !! ---
+BOT_TOKEN = '8424414707:AAE8l6_6krko6LapUOAU5U8LhSzjP_TRT20' # <-- The token you provided
 
-# --- !! 2. SET YOUR TIMEZONE !! ---
+# <-- SESSION_STRING_1 is REMOVED. We use the token now.
+
+# --- !! 3. SET YOUR TIMEZONE !! ---
 MENTOR_TIMEZONE = "Africa/Lagos"
 US_TIMEZONE = "America/New_York"
 
-# --- !! 3. PASTE YOUR PAYMENT INFO HERE !! ---
+# --- !! 4. PASTE YOUR PAYMENT INFO HERE !! ---
 WHOP_PAYMENT_LINK = "https://whop.com/your-product"
 BTC_ADDRESSES = [
     "bc1qYourFirstAddressGoesHere",
@@ -36,7 +38,8 @@ Once you’re in, I’ll send your first alert and onboarding checklist right aw
 # --- End of Configuration ---
 
 
-client = TelegramClient(StringSession(SESSION_STRING_1), API_ID, API_HASH)
+# --- CHANGE 2: Use a file session for the bot, not a StringSession ---
+client = TelegramClient('bot_session_goku1', API_ID, API_HASH)
 
 # This dictionary will keep track of where each user is in the conversation.
 user_states = {}
@@ -160,7 +163,7 @@ async def handle_new_dm(event):
     Handles ALL new incoming text messages.
     """
     if not event.is_private: return
-    if event.message.out: return # This is the fix for 'is_self'
+    # if event.message.out: return # <-- CHANGE 3: Removed this line. Bots don't send 'out' messages.
         
     sender_id = event.sender_id
     text = event.text.lower().strip()
@@ -341,30 +344,25 @@ async def process_intent(sender_id, intent, event_object):
 
 
 # ===================================================================
-# --- 5. SAFETY SWITCH (UNCHANGED) ---
+# --- 5. SAFETY SWITCH (REMOVED) ---
 # ===================================================================
-@client.on(events.NewMessage(outgoing=True))
-async def handle_my_reply(event):
-    """
-    This is the safety switch. If YOU reply, the bot stops.
-    """
-    if not event.is_private:
-        return
-        
-    user_id = event.chat_id
-    if user_id in user_states:
-        del user_states[user_id]
-        print(f"Mentor has taken over conversation with {user_id}. Automation stopped for them.")
+# --- CHANGE 4: I have removed the 'handle_my_reply' function.
+# This function cannot work when you run as a Bot, because the bot
+# is a separate account. It cannot see the messages YOU send
+# from your personal account.
+# ===================================================================
+
 
 # ===================================================================
-# --- 6. MAIN FUNCTION (UNCHANGED) ---
+# --- 6. MAIN FUNCTION (CHANGED) ---
 # ===================================================================
 async def main():
-    print("Personal Assistant (goku1) is starting...")
-    await client.start()
+    print("Personal Assistant (goku1) is starting as a BOT...")
+    # --- CHANGE 5: Start the client using the bot_token ---
+    await client.start(bot_token=BOT_TOKEN)
     print("Personal Assistant (goku1) is running. Waiting for new DMs...")
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
-    with client:
-        client.loop.run_until_complete(main())
+    # --- CHANGE 6: The main loop is simpler for bots ---
+    client.loop.run_until_complete(main())
