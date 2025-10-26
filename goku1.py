@@ -1,12 +1,16 @@
 import asyncio
 import random
 from telethon import TelegramClient, events, Button
+from telethon.sessions import StringSession  # <-- 1. ADD THIS IMPORT
 from datetime import datetime, timedelta
-import pytz  # This is needed for timezones
+import pytz
 
-# --- !! 1. PASTE YOUR API KEYS HERE (Less Secure) !! ---
-API_ID = 3848094  # <-- Put your FIRST account's API ID here
-API_HASH = 'b5be7dd84556db235436187271576566' # <-- Put your FIRST account's API Hash here
+# --- !! 1. PASTE YOUR KEYS AND SESSION STRING HERE !! ---
+API_ID = 3848094  # <-- Your FIRST account's API ID
+API_HASH = 'b5be7dd84556db235436187271576566' # <-- Your FIRST account's API Hash
+
+# <-- 2. PASTE THE FIRST SESSION STRING YOU GENERATED
+SESSION_STRING_1 = '1BJWap1wBu0GxCLqqw-IpLrWSgqSG0Op2aSqmtv5xd0M7t6yrkN3EHMXQFF-YFSkC9wv1mynqGvUNp57jlRfefcEmp_jWQsFNUsRCvyOsnqWjcytjKGlX_w6SCSCxJcNVF6OuI1JyCJgmxgEyETcnLndbz7TAz0ZmtYMDKVDFBVEZ7Rbgs68mqf9wwVRQbrlQpz58Wsq4tEpe8vJPZFOn9BNWqxrPIxp6Gcw6z30OvBH8IyZjG0sjm1mGOxyI906Di5Tyq0WKLNGoeKaXSoWJTNno5L6CaAQm6M3x0Jc1bGaBPdFJ5DBbaddP8pRL6-S6PcS63ESQ5xwB3SU80iL1H8rzREWVhds='
 
 # --- !! 2. SET YOUR TIMEZONE !! ---
 MENTOR_TIMEZONE = "Africa/Lagos"
@@ -14,13 +18,9 @@ US_TIMEZONE = "America/New_York"
 
 # --- !! 3. PASTE YOUR PAYMENT INFO HERE !! ---
 WHOP_PAYMENT_LINK = "https://whop.com/your-product"
-
 BTC_ADDRESSES = [
     "bc1qYourFirstAddressGoesHere",
-    "bc1qYourSecondAddressGoesHere",
-    "bc1qYourThirdAddressGoesHere",
-    "bc1qYourFourthAddressGoesHere",
-    "bc1qYourFifthAddressGoesHere"
+    # ... your other addresses
 ]
 
 # --- Your Sales Message (sent when they say "No") ---
@@ -36,12 +36,14 @@ Once you’re in, I’ll send your first alert and onboarding checklist right aw
 # --- End of Configuration ---
 
 
-# !! IMPORTANT: This MUST be unique for each assistant file
-client = TelegramClient('session_one', API_ID, API_HASH)
+# !! 3. THIS LINE IS NOW CHANGED !!
+client = TelegramClient(StringSession(SESSION_STRING_1), API_ID, API_HASH)
+
+# ... (THE REST OF YOUR CODE IS EXACTLY THE SAME) ...
+# (No need to copy, it's identical from here down)
 
 # This dictionary will keep track of where each user is in the conversation.
 user_states = {}
-
 
 def get_wait_message():
     """
@@ -92,12 +94,11 @@ def get_wait_message():
         )
 
 
-@client.on(events.NewMessage(incoming=True))  # <-- FIX 1: 'private=True' removed
+@client.on(events.NewMessage(incoming=True))
 async def handle_new_dm(event):
     """
     NEW FLOW: Greets the user and offers a choice: Bot or Human.
     """
-    # <-- FIX 1: Added this check
     if not event.is_private:
         return
         
@@ -125,12 +126,11 @@ async def handle_new_dm(event):
         print(f"New conversation with {sender_id}. Sent initial choice.")
 
 
-@client.on(events.NewMessage(outgoing=True))  # <-- FIX 2: 'private=True' removed
+@client.on(events.NewMessage(outgoing=True))
 async def handle_my_reply(event):
     """
     This is the safety switch. If YOU reply, the bot stops.
     """
-    # <-- FIX 2: Added this check
     if not event.is_private:
         return
         
