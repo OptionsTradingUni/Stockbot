@@ -33,7 +33,7 @@ Once you’re in, I’ll send your first alert and onboarding checklist right aw
 client = TelegramClient(StringSession(SESSION_STRING_1), API_ID, API_HASH)
 user_states = {}
 
-# --- get_wait_message function (unchanged, still includes 'main menu' hint) ---
+# --- get_wait_message function ---
 def get_wait_message():
     try:
         mentor_tz = pytz.timezone(MENTOR_TIMEZONE)
@@ -71,7 +71,7 @@ def get_wait_message():
             "They will reply soon. (Type **`main menu`** to restart)"
         )
 
-# --- delete_previous_messages function (unchanged) ---
+# --- delete_previous_messages function ---
 async def delete_previous_messages(sender_id, current_message_id):
     print(f"--- Attempting to delete previous bot messages for {sender_id} ---")
     messages_to_delete = []
@@ -99,7 +99,6 @@ async def send_welcome_message(sender_id, message_to_reply):
         "▶️ To continue with the assistant, type: **`continue`**\n"
         "👤 To wait for a human mentor, type: **`wait`**"
     )
-    # Send as a new message, replying to the user's initial message
     await message_to_reply.reply(welcome_text)
     print(f"New conversation with {sender_id}. Sent initial choice (text only).")
 
@@ -137,39 +136,38 @@ async def send_fallback_message(sender_id, state, message_to_reply):
     elif state == "SENT_BTC_ADDRESS":
         base_text = "After sending the Bitcoin, please type **`paid`** or **`sent`**."
     elif state in ["MENTOR_QUEUE", "PAID_PENDING_VERIFY", "BTC_PENDING_VERIFY"]:
-        base_text = get_wait_message() # Re-send appropriate wait message
-    else: # Unknown state
+        base_text = get_wait_message()
+    else:
         base_text = "Sorry, I'm having trouble understanding. Putting you in the queue for a mentor."
         user_states[sender_id] = "MENTOR_QUEUE"
         base_text += "\n\n" + get_wait_message()
 
-    # --- Send the reply logic ---
     try:
-        await message_to_reply.reply(base_text) # Always reply, no buttons
+        await message_to_reply.reply(base_text)
         print(f"--- DEBUG: Fallback reply sent successfully (text only)")
     except Exception as e:
         print(f"--- ERROR: Failed to send fallback reply: {e} ---")
-        try:
-            await client.send_message(sender_id, base_text) # Final attempt
-        except Exception as e2:
-            print(f"--- FATAL ERROR: Could not send fallback message at all: {e2} ---")
+        try: await client.send_message(sender_id, base_text)
+        except Exception as e2: print(f"--- FATAL ERROR: Could not send fallback message at all: {e2} ---")
 
 
 # ===================================================================
-# --- TEXT HANDLER (No Button Handler Needed) ---
+# --- TEXT HANDLER (CORRECTED DECORATOR) ---
 # ===================================================================
-@client.on(events.NewMessage(incoming=True, private=True)) # Added private=True back here for efficiency
+@client.on(events.NewMessage(incoming=True)) # <-- CORRECTED LINE (Removed private=True)
 async def handle_new_dm(event):
     """Handles ALL new incoming text messages."""
-    # event.message.out check is still valid for user mode
-    if event.message.out: return
+    # Check for private inside
+    if not event.is_private:
+        return
+    if event.message.out:
+        return
 
     sender_id = event.sender_id
-    text = event.text.lower().strip().replace('`', '') # Clean input
+    text = event.text.lower().strip().replace('`', '')
 
     current_state = user_states.get(sender_id)
 
-    # Handle /start or completely new users
     if text == '/start' or current_state is None:
         if text == '/start' and current_state:
             print(f"User {sender_id} sent /start. Resetting state.")
@@ -177,14 +175,12 @@ async def handle_new_dm(event):
         await send_welcome_message(sender_id, event.message)
         return
 
-    # Handle "main menu" command in waiting states
     if text == "main menu" and current_state in ["MENTOR_QUEUE", "PAID_PENDING_VERIFY", "BTC_PENDING_VERIFY"]:
         print(f"User {sender_id} requested main menu from state {current_state}.")
         await delete_previous_messages(sender_id, event.message.id)
         await send_welcome_message(sender_id, event.message)
         return
 
-    # Try to match text input to an intent based on current state
     intent = None
     if current_state == "AWAITING_CHOICE":
         if text == "continue": intent = b'continue_bot'
@@ -201,41 +197,29 @@ async def handle_new_dm(event):
     elif current_state == "SENT_BTC_ADDRESS":
         if text == "paid" or text == "sent": intent = b'btc_sent'
 
-    # Process the intent if found
     if intent:
-        # Pass the original message object to reply to
         await process_intent(sender_id, intent, event.message)
-    # Handle text when in a waiting state (but not "main menu")
     elif current_state in ["MENTOR_QUEUE", "PAID_PENDING_VERIFY", "BTC_PENDING_VERIFY"]:
         print(f"User {sender_id} sent text '{text}' while in queue state {current_state}. Sending wait message.")
         await event.reply(get_wait_message())
-    # Handle general confusion or unrecognized input in active states
     else:
-        # No need for confusion check, fallback message handles re-prompting
         print(f"User {sender_id} sent unrecognized text '{text}' in state {current_state}. Generic fallback.")
         await send_fallback_message(sender_id, current_state, event.message)
 
 # ===================================================================
 # --- MAIN LOGIC FOR ALL INTENTS (Text Only) ---
 # ===================================================================
-async def process_intent(sender_id, intent, message_object): # Renamed event_object
+async def process_intent(sender_id, intent, message_object):
     """Handles the logic for ALL intents, sending text-only responses."""
     state = user_states.get(sender_id)
 
     async def respond(text):
-        """Helper to reply to the user's message."""
-        try:
-            # Always reply to the message that triggered this intent
-            await message_object.reply(text)
+        try: await message_object.reply(text)
         except Exception as e:
             print(f"--- ERROR: In respond() for {sender_id}: {e}. Attempting send_message ---")
-            try:
-                await client.send_message(sender_id, text) # Fallback send
-            except Exception as e2:
-                 print(f"--- FATAL ERROR: Could not send process_intent message at all: {e2} ---")
+            try: await client.send_message(sender_id, text)
+            except Exception as e2: print(f"--- FATAL ERROR: Could not send process_intent message at all: {e2} ---")
 
-
-    # --- Intent Processing Logic ---
     if intent == b'continue_bot' and (state == "AWAITING_CHOICE" or state is None):
         user_states[sender_id] = "AWAITING_PREMIUM_Q"
         response_text = (
@@ -254,20 +238,14 @@ async def process_intent(sender_id, intent, message_object): # Renamed event_obj
 
     elif intent == b'paid_yes' and state == "AWAITING_PREMIUM_Q":
         user_states[sender_id] = "PAID_PENDING_VERIFY"
-        wait_msg_parts = get_wait_message().split('\n\n', 1)
-        time_info = wait_msg_parts[1] if len(wait_msg_parts) > 1 else "A mentor will reply as soon as possible."
-        await respond(
-            f"Great, thank you! 🙏\n\n"
-            f"I've marked you as pending verification. A human mentor will personally "
-            f"check the payment and get you added to the premium group.\n\n{time_info}\n\n"
-            f"_(Automated response. A human mentor will reply next.)_"
-        )
+        wait_msg_parts = get_wait_message().split('\n\n', 1); time_info = wait_msg_parts[1] if len(wait_msg_parts) > 1 else "A mentor will reply ASAP."
+        await respond(f"Great, thank you! 🙏\n\nI've marked you as pending verification...\n\n{time_info}\n\n_(Automated response...)_")
         print(f"User {sender_id}: Claimed 'yes' (paid). Marked for verification.")
 
     elif intent == b'paid_no' and state == "AWAITING_PREMIUM_Q":
         user_states[sender_id] = "AWAITING_PAY_METHOD"
         await respond("Understood. Here is the membership information:\n\n_(Automated response)_")
-        await client.send_message(sender_id, SALES_MESSAGE) # Send sales pitch
+        await client.send_message(sender_id, SALES_MESSAGE)
         payment_options_text = (
             "How would you like to pay?\n\n"
             "Please type one of the following:\n\n"
@@ -276,14 +254,14 @@ async def process_intent(sender_id, intent, message_object): # Renamed event_obj
             "👤 To wait for the mentor, type: **`wait`**\n\n"
             "_(Automated response)_"
         )
-        await client.send_message(sender_id, payment_options_text) # Send payment options
+        await client.send_message(sender_id, payment_options_text)
         print(f"User {sender_id}: Claimed 'no' (not paid). Sent sales pitch & payment options.")
 
     elif intent == b'pay_card' and state == "AWAITING_PAY_METHOD":
         user_states[sender_id] = "SENT_CARD_LINK"
         response_text = (
             f"Perfect. You can use this secure link to pay.\n\n"
-            f"**Payment Link:** {PAYMENT_LINK}\n\n" # Link is automatically clickable by Telegram
+            f"**Payment Link:** {PAYMENT_LINK}\n\n"
             f"**Important:** After you have paid, please come back here and "
             f"type **`paid`** so a mentor can verify and add you.\n\n"
             f"_(Automated response)_"
@@ -296,7 +274,7 @@ async def process_intent(sender_id, intent, message_object): # Renamed event_obj
         address_to_send = random.choice(BTC_ADDRESSES)
         response_text = (
             f"Great. Please send **$50 USD** equivalent of Bitcoin (BTC) to the following address:\n\n"
-            f"`{address_to_send}`\n\n" # Address is copyable
+            f"`{address_to_send}`\n\n"
             f"**IMPORTANT:** After you have sent the payment, "
             f"please type **`paid`** or **`sent`**.\n\n"
             f"_(Automated response)_"
@@ -311,43 +289,27 @@ async def process_intent(sender_id, intent, message_object): # Renamed event_obj
 
     elif intent == b'btc_sent' and state == "SENT_BTC_ADDRESS":
         user_states[sender_id] = "BTC_PENDING_VERIFY"
-        wait_msg_parts = get_wait_message().split('\n\n', 1)
-        time_info = wait_msg_parts[1] if len(wait_msg_parts) > 1 else "A mentor will reply as soon as possible."
-        await respond(
-            f"Thank you! 🙏 Your payment has been marked as pending.\n\n"
-            f"A mentor will **personally verify the transaction** on the blockchain "
-            f"and will reply here to onboard you.\n\n{time_info}\n\n"
-            f"_(Automated response. A human mentor will reply next.)_"
-        )
+        wait_msg_parts = get_wait_message().split('\n\n', 1); time_info = wait_msg_parts[1] if len(wait_msg_parts) > 1 else "A mentor will reply ASAP."
+        await respond(f"Thank you! 🙏 Your payment has been marked as pending...\n\n{time_info}\n\n_(Automated response...)_")
         print(f"User {sender_id}: Confirmed 'paid'/'sent' for BTC. Marked for verification.")
 
     elif intent == b'paid_card_confirm' and state == "SENT_CARD_LINK":
         user_states[sender_id] = "PAID_PENDING_VERIFY"
-        wait_msg_parts = get_wait_message().split('\n\n', 1)
-        time_info = wait_msg_parts[1] if len(wait_msg_parts) > 1 else "A mentor will reply as soon as possible."
-        await respond(
-            f"Thank you! 🙏\n\n"
-            f"I've marked you as pending verification. A human mentor will personally "
-            f"check the payment and get you added to the premium group.\n\n{time_info}\n\n"
-            f"_(Automated response. A human mentor will reply next.)_"
-        )
+        wait_msg_parts = get_wait_message().split('\n\n', 1); time_info = wait_msg_parts[1] if len(wait_msg_parts) > 1 else "A mentor will reply ASAP."
+        await respond(f"Thank you! 🙏\n\nI've marked you as pending verification...\n\n{time_info}\n\n_(Automated response...)_")
         print(f"User {sender_id}: Confirmed 'paid' via card link. Marked for verification.")
 
     else:
-        # If intent doesn't match current state, treat as unrecognized
         print(f"--- WARNING: Intent '{intent}' received in unexpected state '{state}' for user {sender_id}. Sending fallback. ---")
         await send_fallback_message(sender_id, state, message_object)
-
 
 # ===================================================================
 # --- SAFETY SWITCH ---
 # ===================================================================
-# FIX: Removed the incorrect 'private=True' argument
-@client.on(events.NewMessage(outgoing=True))
+@client.on(events.NewMessage(outgoing=True)) # Correct - no 'private' here
 async def handle_my_reply(event):
     """If YOU reply, the bot stops for that user."""
-    # Check if it's a private chat *inside* the function
-    if not event.is_private:
+    if not event.is_private: # Check inside
         return
     user_id = event.chat_id
     if user_id in user_states:
@@ -363,7 +325,7 @@ async def main():
     if not await client.is_user_authorized():
         print("CRITICAL ERROR: SESSION STRING IS INVALID OR EXPIRED. Bot cannot start.")
         print("Please generate a new session string and update the script.")
-        return # Stop execution
+        return
 
     print(f"Logged in as: {(await client.get_me()).first_name}")
     print("Personal Assistant is running. Waiting for new DMs...")
