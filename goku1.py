@@ -366,3 +366,4 @@ async def main():
 if __name__ == '__main__':
     # --- CHANGE 6: The main loop is simpler for bots ---
     client.loop.run_until_complete(main())
+
