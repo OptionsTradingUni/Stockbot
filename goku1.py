@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 import pytz  # This is needed for timezones
 
 # --- !! 1. PASTE YOUR API KEYS HERE (Less Secure) !! ---
-API_ID = 1234567  # <-- Put your FIRST account's API ID here
-API_HASH = 'abcde12345' # <-- Put your FIRST account's API Hash here
+API_ID = 3848094  # <-- Put your FIRST account's API ID here
+API_HASH = 'b5be7dd84556db235436187271576566' # <-- Put your FIRST account's API Hash here
 
 # --- !! 2. SET YOUR TIMEZONE !! ---
 MENTOR_TIMEZONE = "Africa/Lagos"
