@@ -92,11 +92,15 @@ def get_wait_message():
         )
 
 
-@client.on(events.NewMessage(incoming=True, private=True))
+@client.on(events.NewMessage(incoming=True))  # <-- FIX 1: 'private=True' removed
 async def handle_new_dm(event):
     """
     NEW FLOW: Greets the user and offers a choice: Bot or Human.
     """
+    # <-- FIX 1: Added this check
+    if not event.is_private:
+        return
+        
     if event.is_self:
         return
     sender_id = event.sender_id
@@ -121,11 +125,15 @@ async def handle_new_dm(event):
         print(f"New conversation with {sender_id}. Sent initial choice.")
 
 
-@client.on(events.NewMessage(outgoing=True, private=True))
+@client.on(events.NewMessage(outgoing=True))  # <-- FIX 2: 'private=True' removed
 async def handle_my_reply(event):
     """
     This is the safety switch. If YOU reply, the bot stops.
     """
+    # <-- FIX 2: Added this check
+    if not event.is_private:
+        return
+        
     user_id = event.chat_id
     if user_id in user_states:
         del user_states[user_id]
@@ -249,9 +257,9 @@ async def handle_button_press(query):
 
 
 async def main():
-    print("Personal Assistant 2 is starting...")
+    print("Personal Assistant (goku2) is starting...")
     await client.start()
-    print("Personal Assistant 2 is running. Waiting for new DMs...")
+    print("Personal Assistant (goku2) is running. Waiting for new DMs...")
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
