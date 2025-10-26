@@ -1,7 +1,7 @@
 import asyncio
 import random
 from telethon import TelegramClient, events, Button
-from telethon.sessions import StringSession  # <-- 1. ADD THIS IMPORT
+from telethon.sessions import StringSession
 from datetime import datetime, timedelta
 import pytz
 
@@ -38,9 +38,6 @@ Once you’re in, I’ll send your first alert and onboarding checklist right aw
 
 # !! 3. THIS LINE IS NOW CHANGED !!
 client = TelegramClient(StringSession(SESSION_STRING_1), API_ID, API_HASH)
-
-# ... (THE REST OF YOUR CODE IS EXACTLY THE SAME) ...
-# (No need to copy, it's identical from here down)
 
 # This dictionary will keep track of where each user is in the conversation.
 user_states = {}
@@ -102,8 +99,11 @@ async def handle_new_dm(event):
     if not event.is_private:
         return
         
-    if event.is_self:
+    # --- !! THIS IS THE FIX !! ---
+    if event.message.out:
         return
+    # --- !! END OF FIX !! ---
+        
     sender_id = event.sender_id
     
     if sender_id not in user_states:
