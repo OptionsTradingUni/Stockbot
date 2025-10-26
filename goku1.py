@@ -1,25 +1,29 @@
 import asyncio
 import random
 from telethon import TelegramClient, events, Button
+from telethon.sessions import StringSession
 from datetime import datetime, timedelta
 import pytz
 
-# --- !! 1. PASTE YOUR KEYS AND BOT TOKEN !! ---
+# --- !! 1. PASTE YOUR KEYS AND SESSION STRING HERE !! ---
 API_ID = 3848094
 API_HASH = 'b5be7dd84556db235436187271576566'
-BOT_TOKEN = '8424414707:AAE8l6_6krko6LapUOAU5U8LhSzjP_TRT20'
 
-# --- !! 3. SET YOUR TIMEZONE !! ---
+# <-- 2. YOUR SESSION STRING -->
+SESSION_STRING_1 = '1BJWap1wBu0GxCLqqw-IpLrWSgqSG0Op2aSqmtv5xd0M7t6yrkN3EHMXQFF-YFSkC9wv1mynqGvUNp57jlRfefcEmp_jWQsFNUsRCvyOsnqWjcytjKGlX_w6SCSCxJcNVF6OuI1JyCJgmxgEyETcnLndbz7TAz0ZmtYMDKVDFBVEZ7Rbgs68mqf9wwVRQbrlQpz58Wsq4tEpe8vJPZFOn9BNWqxrPIxp6Gcw6z30OvBH8IyZjG0sjm1mGOxyI906Di5Tyq0WKLNGoeKaXSoWJTNno5L6CaAQm6M3x0Jc1bGaBPdFJ5DBbaddP8pRL6-S6PcS63ESQ5xwB3SU80iL1H8rzREWVhds='
+
+# --- !! 2. SET YOUR TIMEZONE !! ---
 MENTOR_TIMEZONE = "Africa/Lagos"
 US_TIMEZONE = "America/New_York"
 
-# --- !! 4. PASTE YOUR PAYMENT INFO HERE !! ---
-WHOP_PAYMENT_LINK = "https://whop.com/your-product"
+# --- !! 3. PASTE YOUR PAYMENT INFO HERE !! ---
+# <-- FIXED: Using Sellix.io link as discussed -->
+PAYMENT_LINK = "https://pay.sellix.io/your-product-link"
 BTC_ADDRESSES = [
     "bc1qYourFirstAddressGoesHere",
 ]
 
-# --- Your Sales Message ---
+# --- Your Sales Message (sent when they say "No") ---
 SALES_MESSAGE = """The membership is $50 to join.
 Inside, you’ll get:
 📈 Daily trade alerts (with entry, stop-loss, and take-profit levels)
@@ -31,7 +35,10 @@ Once you’re in, I’ll send your first alert and onboarding checklist right aw
 """
 # --- End of Configuration ---
 
-client = TelegramClient('bot_session_goku1', API_ID, API_HASH)
+# <-- CORRECT: Using StringSession for Railway -->
+client = TelegramClient(StringSession(SESSION_STRING_1), API_ID, API_HASH)
+
+# This dictionary will keep track of where each user is in the conversation.
 user_states = {}
 
 def get_wait_message():
@@ -47,11 +54,16 @@ def get_wait_message():
         hour = now_mentor.hour
         minute = now_mentor.minute
 
+        # --- Your INACTIVE (Sleep) Time ---
+        # From 1:30 AM up to 7:59 AM
         if (hour == 1 and minute >= 30) or (hour > 1 and hour < 8):
+            
             reply_time_mentor = (now_mentor + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
             reply_time_us = reply_time_mentor.astimezone(us_tz)
+
             mentor_time_str = reply_time_mentor.strftime("%-I:%M %p %Z")
             us_time_str = reply_time_us.strftime("%-I:%M %p %Z")
+
             return (
                 "No problem. You've been added to the mentor's queue.\n\n"
                 "Please note: The team is currently handling **peak message volume** from all regions, so replies are delayed. "
@@ -59,31 +71,38 @@ def get_wait_message():
                 f"{mentor_time_str}** (approximately **{us_time_str}**).\n\n"
                 "Thank you for your patience!"
             )
+        
+        # --- Your ACTIVE (High Traffic) Time ---
+        # All other times (8:00 AM to 1:29 AM)
         else:
             return (
                 "No problem. You've been added to the mentor's queue.\n\n"
                 "The mentor is active but currently handling **high message volume** (likely in a live trade or with another member). "
                 "They will reply to you here personally as soon as they are free. Thank you!"
             )
+            
     except Exception as e:
         print(f"Error in get_wait_message: {e}")
+        # Fallback in case of timezone error
         return (
             "No problem. You've been added to the mentor's queue. "
             "They will reply to you here personally as soon as they are available. Thank you!"
         )
 
 # ===================================================================
-# 1. WELCOME MESSAGE HANDLER
+# --- 1. WELCOME MESSAGE HANDLER ---
 # ===================================================================
 async def send_welcome_message(sender_id, message_to_reply):
     """Sends the initial welcome message and sets the user's state."""
     user_states[sender_id] = "AWAITING_CHOICE"
+    
     welcome_text = (
         "👋 Hello! You've reached out to a mentor at **Options Trading University**.\n\n"
         "This is an automated message due to very high message volume. "
         "You can use this assistant to get answers or join, or you can wait for a human.\n\n"
         "Please choose an option below:"
     )
+    
     await message_to_reply.reply(
         welcome_text,
         buttons=[
@@ -91,13 +110,14 @@ async def send_welcome_message(sender_id, message_to_reply):
             Button.inline("Wait for a human mentor", b'wait_mentor')
         ]
     )
-    print(f"User {sender_id}: Sent initial choice.")
+    print(f"New conversation with {sender_id}. Sent initial choice.")
 
 # ===================================================================
-# 2. FALLBACK (ERROR) MESSAGE HANDLER
+# --- 2. FALLBACK (ERROR) MESSAGE HANDLER ---
 # ===================================================================
 async def send_fallback_message(sender_id, state, message_to_reply):
     """Sends a "I don't understand" message and re-sends the correct prompt."""
+    
     base_text = "Sorry, I'm an automated assistant and didn't understand that. Please use the buttons or try rephrasing."
     buttons = []
     
@@ -123,58 +143,72 @@ async def send_fallback_message(sender_id, state, message_to_reply):
     elif state == "SENT_BTC_ADDRESS":
         base_text = "Just click the button below once you've sent the payment."
         buttons = [Button.inline("✅ I HAVE SENT THE PAYMENT", b'btc_sent')]
+        
     elif state in ["MENTOR_QUEUE", "PAID_PENDING_VERIFY", "BTC_PENDING_VERIFY"]:
-        base_text = get_wait_message().split('\n\n', 1)[1]
+        base_text = get_wait_message().split('\n\n', 1)[1] # Get the "please wait" part
         base_text = f"No problem! A human mentor will be here to help you. {base_text}"
 
-    print(f"User {sender_id}: Sent fallback message for state {state}.")
     await message_to_reply.reply(base_text, buttons=buttons if buttons else None)
 
 # ===================================================================
-# 3. TEXT AND BUTTONS ARE HANDLED HERE
+# --- 3. TEXT AND BUTTONS ARE HANDLED HERE ---
 # ===================================================================
 @client.on(events.NewMessage(incoming=True))
 async def handle_new_dm(event):
-    """Handles ALL new incoming text messages."""
-    
-    # --- !! NEW DEBUG LINE !! ---
-    print(f"\n--- DEBUG: Handler received a message from {event.sender_id} ---")
-    
-    if not event.is_private: 
-        print("DEBUG: Message was not private. Ignoring.")
-        return
+    """
+    Handles ALL new incoming text messages.
+    """
+    if not event.is_private: return
+    if event.message.out: return # Correctly ignore our own outgoing messages
         
     sender_id = event.sender_id
     text = event.text.lower().strip()
-    print(f"DEBUG: Message text: '{text}'")
     
+    # Check if this is a new conversation
     if sender_id not in user_states:
-        print("DEBUG: New user. Sending welcome message...")
         await send_welcome_message(sender_id, event.message)
         return
 
+    # If conversation exists, get their state
     state = user_states.get(sender_id)
-    print(f"DEBUG: Existing user. Current state: {state}")
     intent = None
 
+    # --- This is the "Smart Text" part ---
     if state == "AWAITING_CHOICE":
-        if "continue" in text or "assistant" in text or "bot" in text: intent = b'continue_bot'
-        elif "wait" in text or "human" in text or "mentor" in text: intent = b'wait_mentor'
+        if "continue" in text or "assistant" in text or "bot" in text:
+            intent = b'continue_bot'
+        elif "wait" in text or "human" in text or "mentor" in text:
+            intent = b'wait_mentor'
+
     elif state == "AWAITING_PREMIUM_Q":
-        if "yes" in text or "i paid" in text or "already paid" in text: intent = b'paid_yes'
-        elif "no" in text or "i have not" in text or "haven't" in text: intent = b'paid_no'
+        if "yes" in text or "i paid" in text or "already paid" in text:
+            intent = b'paid_yes'
+        elif "no" in text or "i have not" in text or "haven't" in text:
+            intent = b'paid_no'
+            
     elif state == "AWAITING_PAY_METHOD":
-        if "card" in text or "credit" in text or "whop" in text: intent = b'pay_card'
-        elif "btc" in text or "bitcoin" in text: intent = b'pay_btc'
-        elif "wait" in text or "mentor" in text: intent = b'wait_mentor_payment'
+        if "card" in text or "credit" in text:
+            intent = b'pay_card'
+        elif "btc" in text or "bitcoin" in text:
+            intent = b'pay_btc'
+        elif "wait" in text or "mentor" in text:
+            intent = b'wait_mentor_payment'
+
+    # <-- ADDED: Smart text handler for *after* card link is sent
+    elif state == "SENT_CARD_LINK":
+        if "paid" in text or "done" in text or "sent" in text or "finished" in text:
+            intent = b'paid_card_confirm'
+
     elif state == "SENT_BTC_ADDRESS":
-        if "sent" in text or "i have sent" in text or "paid" in text: intent = b'btc_sent'
+        if "sent" in text or "i have sent" in text or "paid" in text:
+            intent = b'btc_sent'
     
+    # --- Route the intent ---
     if intent:
-        print(f"DEBUG: Matched intent: {intent}. Processing...")
+        # If we understood the text, process it as if a button was pressed
         await process_intent(sender_id, intent, event.message)
     else:
-        print(f"DEBUG: No intent matched. Sending fallback...")
+        # If we didn't understand, send the fallback message
         await send_fallback_message(sender_id, state, event.message)
 
 
@@ -183,39 +217,58 @@ async def handle_button_press(query):
     """Handles all button presses from the automation."""
     sender_id = query.sender_id
     intent = query.data
-    print(f"\n--- DEBUG: Handler received a button press from {sender_id} ---")
-    print(f"DEBUG: Button data: {intent}")
     
-    await query.answer() 
+    await query.answer() # Acknowledge the press
+    
+    # Process the button intent
     await process_intent(sender_id, intent, query)
 
 # ===================================================================
-# 4. MAIN LOGIC FOR ALL INTENTS
+# --- 4. MAIN LOGIC FOR ALL INTENTS ---
 # ===================================================================
 async def process_intent(sender_id, intent, event_object):
-    """Handles the logic for ALL intents, from either text or buttons."""
+    """
+    This new function handles the logic for ALL intents,
+    from either text or buttons.
+    'event_object' can be a message (to reply to) or a query (to edit).
+    """
+    state = user_states.get(sender_id) # Get current state
     
+    # Helper to check if we should 'edit' a message or 'reply'
     async def respond(text, buttons=None):
-        if hasattr(event_object, 'edit'):
-            await event_object.edit(text, buttons=buttons)
-        else:
-            await event_object.reply(text, buttons=buttons)
+        try:
+            if hasattr(event_object, 'edit'):
+                await event_object.edit(text, buttons=buttons)
+            else:
+                await event_object.reply(text, buttons=buttons)
+        except Exception as e:
+            # Handle case where message is old and can't be edited
+            print(f"Error responding: {e}. Sending as new message.")
+            await client.send_message(sender_id, text, buttons=buttons)
 
-    if intent == b'continue_bot':
+
+    # --- 1. User chose "Continue with assistant" ---
+    if intent == b'continue_bot' and (state == "AWAITING_CHOICE" or state is None):
         user_states[sender_id] = "AWAITING_PREMIUM_Q"
         await respond(
             "Great! To help me direct you, have you already paid for the premium membership?\n\n"
             "_(This is an automated response)_",
-            buttons=[Button.inline("Yes, I paid", b'paid_yes'), Button.inline("No, I have not", b'paid_no')]
+            buttons=[
+                Button.inline("Yes, I paid", b'paid_yes'),
+                Button.inline("No, I have not", b'paid_no')
+            ]
         )
-        print(f"User {sender_id}: Chose 'continue bot'.")
+        print(f"User {sender_id} chose to continue with bot.")
     
-    elif intent == b'wait_mentor':
+    # --- 2. User chose "Wait for mentor" ---
+    elif intent == b'wait_mentor' and (state == "AWAITING_CHOICE" or state is None):
         user_states[sender_id] = "MENTOR_QUEUE"
-        await respond(get_wait_message())
-        print(f"User {sender_id}: Chose 'wait mentor'.")
+        wait_message = get_wait_message()
+        await respond(wait_message)
+        print(f"User {sender_id} chose to wait for mentor.")
     
-    elif intent == b'paid_yes':
+    # --- 3. User said "Yes, I paid" ---
+    elif intent == b'paid_yes' and state == "AWAITING_PREMIUM_Q":
         user_states[sender_id] = "PAID_PENDING_VERIFY"
         wait_message_part = get_wait_message().split('\n\n', 1)[1]
         await respond(
@@ -225,35 +278,42 @@ async def process_intent(sender_id, intent, event_object):
             wait_message_part + "\n\n"
             "_(This is an automated response. A human mentor will reply next.)_"
         )
-        print(f"User {sender_id}: Claimed 'paid yes'.")
+        print(f"User {sender_id} claims they paid. Marked for verification.")
 
-    elif intent == b'paid_no':
+    # --- 4. User said "No, I have not" ---
+    elif intent == b'paid_no' and state == "AWAITING_PREMIUM_Q":
         user_states[sender_id] = "AWAITING_PAY_METHOD"
-        await respond("Understood. Here is the membership information:\n\n_(This is an automated response)_")
+        await respond(
+            "Understood. Here is the membership information:\n\n"
+            "_(This is an automated response)_"
+        )
         await client.send_message(sender_id, SALES_MESSAGE)
         await client.send_message(
             sender_id,
-            "How would you like to pay?\n\n_(This is an automated response)_",
+            "How would you like to pay?\n\n"
+            "_(This is an automated response)_",
             buttons=[
                 Button.inline("💳 Pay with Credit Card", b'pay_card'),
                 Button.inline("₿ Pay with Bitcoin", b'pay_btc'),
                 Button.inline("I'll wait for the mentor", b'wait_mentor_payment')
             ]
         )
-        print(f"User {sender_id}: Chose 'paid no'.")
+        print(f"User {sender_id} has not paid. Sent sales pitch.")
 
-    elif intent == b'pay_card':
-        user_states[sender_id] = "SENT_WHOP_LINK"
+    # --- 5. User chose "Pay with Credit Card" ---
+    elif intent == b'pay_card' and state == "AWAITING_PAY_METHOD":
+        user_states[sender_id] = "SENT_CARD_LINK" # <-- Renamed state
         await respond(
             f"Perfect. You can use this secure link to pay with a credit card.\n\n"
-            f"**Payment Link:** {WHOP_PAYMENT_LINK}\n\n"
-            "After payment, you will receive a confirmation. Please "
-            "message the mentor here after you've paid to be added to the group.\n\n"
+            f"**Payment Link:** {PAYMENT_LINK}\n\n" # <-- Using correct link
+            "**Important:** After you have paid, please come back here and "
+            "type **'I paid'** so a mentor can verify and add you.\n\n"
             "_(This is an automated response)_"
         )
-        print(f"User {sender_id}: Chose 'pay card'.")
+        print(f"User {sender_id} clicked Pay with Card. Sent Sellix link.")
     
-    elif intent == b'pay_btc':
+    # --- 6. User chose "Pay with Bitcoin" ---
+    elif intent == b'pay_btc' and state == "AWAITING_PAY_METHOD":
         user_states[sender_id] = "SENT_BTC_ADDRESS"
         address_to_send = random.choice(BTC_ADDRESSES)
         await respond(
@@ -268,16 +328,19 @@ async def process_intent(sender_id, intent, event_object):
             "Click here *after* you have sent the Bitcoin:",
             buttons=[Button.inline("✅ I HAVE SENT THE PAYMENT", b'btc_sent')]
         )
-        print(f"User {sender_id}: Chose 'pay btc'.")
+        print(f"User {sender_id} clicked Pay with Bitcoin.")
 
-    elif intent == b'wait_mentor_payment':
+    # --- 7. User chose "I'll wait" (instead of paying) ---
+    elif intent == b'wait_mentor_payment' and state == "AWAITING_PAY_METHOD":
         user_states[sender_id] = "MENTOR_QUEUE"
-        await respond(get_wait_message())
-        print(f"User {sender_id}: Chose 'wait' (instead of paying).")
+        wait_message = get_wait_message()
+        await respond(wait_message)
+        print(f"User {sender_id} is waiting for the mentor.")
 
-    elif intent == b'btc_sent':
+    # --- 8. User confirmed "I SENT THE PAYMENT" (for BTC) ---
+    elif intent == b'btc_sent' and state == "SENT_BTC_ADDRESS":
         user_states[sender_id] = "BTC_PENDING_VERIFY"
-        wait_message_part = get_wait_message().split('\n\n', 1)[1]
+        wait_message_part = get_wait_message().split('\n\n', 1)[1] # Get timing
         await respond(
             "Thank you! 🙏 Your payment has been marked as pending.\n\n"
             "A mentor will **personally verify the transaction** on the blockchain "
@@ -285,17 +348,48 @@ async def process_intent(sender_id, intent, event_object):
             wait_message_part + "\n\n"
             "_(This is an automated response. A human mentor will reply next.)_"
         )
-        print(f"User {sender_id}: Claimed 'btc sent'.")
+        print(f"User {sender_id} claims they sent Bitcoin. Marked for verification.")
+
+    # --- 9. NEW: User confirmed "I paid" (for Card) ---
+    elif intent == b'paid_card_confirm' and state == "SENT_CARD_LINK":
+        user_states[sender_id] = "PAID_PENDING_VERIFY"
+        wait_message_part = get_wait_message().split('\n\n', 1)[1]
+        await respond(
+            "Thank you! 🙏\n\n"
+            "I've marked you as pending verification. A human mentor will personally "
+            "check the payment and get you added to the premium group.\n\n" +
+            wait_message_part + "\n\n"
+            "_(This is an automated response. A human mentor will reply next.)_"
+        )
+        print(f"User {sender_id} claims they paid via card. Marked for verification.")
 
 
 # ===================================================================
-# 5. MAIN FUNCTION
+# --- 5. SAFETY SWITCH ---
+# ===================================================================
+@client.on(events.NewMessage(outgoing=True))
+async def handle_my_reply(event):
+    """
+    This is the safety switch. If YOU reply, the bot stops.
+    """
+    if not event.is_private:
+        return
+        
+    user_id = event.chat_id
+    if user_id in user_states:
+        del user_states[user_id]
+        print(f"Mentor has taken over conversation with {user_id}. Automation stopped for them.")
+
+# ===================================================================
+# --- 6. MAIN FUNCTION ---
 # ===================================================================
 async def main():
-    print("Personal Assistant (goku1) is starting as a BOT...")
-    await client.start(bot_token=BOT_TOKEN)
+    print("Personal Assistant (goku1) is starting...")
+    # This will log in using the SESSION_STRING_1
+    await client.start()
     print("Personal Assistant (goku1) is running. Waiting for new DMs...")
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
-    client.loop.run_until_complete(main())
+    with client:
+        client.loop.run_until_complete(main())
