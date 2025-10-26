@@ -4,23 +4,17 @@ from telethon import TelegramClient, events, Button
 from datetime import datetime, timedelta
 import pytz  # This is needed for timezones
 
-# --- !! 1. PASTE YOUR API KEYS HERE !! ---
-# Get these from https://my.telegram.org
-API_ID = 1234567  # Your API ID 
-API_HASH = 'YOUR_API_HASH_FROM_MY_TELEGRAM_ORG'
+# --- !! 1. PASTE YOUR API KEYS HERE (Less Secure) !! ---
+API_ID = 1234567  # <-- Put your FIRST account's API ID here
+API_HASH = 'abcde12345' # <-- Put your FIRST account's API Hash here
 
 # --- !! 2. SET YOUR TIMEZONE !! ---
-# This is crucial for the wait message.
 MENTOR_TIMEZONE = "Africa/Lagos"
-# This is the US timezone you want to show for comparison
-US_TIMEZONE = "America/New_York" # (This is EST/EDT)
+US_TIMEZONE = "America/New_York"
 
 # --- !! 3. PASTE YOUR PAYMENT INFO HERE !! ---
-# This is your "Whop" or "Launchpass" link for credit card users
 WHOP_PAYMENT_LINK = "https://whop.com/your-product"
 
-# This is your list of Bitcoin addresses.
-# The bot will randomly pick one for each user.
 BTC_ADDRESSES = [
     "bc1qYourFirstAddressGoesHere",
     "bc1qYourSecondAddressGoesHere",
@@ -42,8 +36,8 @@ Once you’re in, I’ll send your first alert and onboarding checklist right aw
 # --- End of Configuration ---
 
 
-# This will create a 'personal_session.session' file to keep you logged in.
-client = TelegramClient('personal_session', API_ID, API_HASH)
+# !! IMPORTANT: This MUST be unique for each assistant file
+client = TelegramClient('session_one', API_ID, API_HASH)
 
 # This dictionary will keep track of where each user is in the conversation.
 user_states = {}
@@ -108,10 +102,8 @@ async def handle_new_dm(event):
     sender_id = event.sender_id
     
     if sender_id not in user_states:
-        # This is the new starting state
         user_states[sender_id] = "AWAITING_CHOICE" 
         
-        # This is your new professional welcome message
         welcome_text = (
             "👋 Hello! You've reached an automated assistant for **Options Trading University**.\n\n"
             "Due to very high message volume, our mentors use this system to help everyone faster. "
@@ -151,11 +143,10 @@ async def handle_button_press(query):
     # --- 1. User makes the FIRST choice (Bot vs. Human) ---
     if state == "AWAITING_CHOICE":
         if query.data == b'continue_bot':
-            # Now we ask the "Paid?" question
             user_states[sender_id] = "AWAITING_PREMIUM_Q"
             await query.edit(
                 "Great! To help me direct you, have you already paid for the premium membership?\n\n"
-                "_(This is an automated response)_",  # <-- EDITED
+                "_(This is an automated response)_",
                 buttons=[
                     Button.inline("Yes, I paid", b'paid_yes'),
                     Button.inline("No, I have not", b'paid_no')
@@ -164,9 +155,8 @@ async def handle_button_press(query):
             print(f"User {sender_id} chose to continue with bot.")
         
         elif query.data == b'wait_mentor':
-            # User wants a human. Give them the time-aware wait message.
             user_states[sender_id] = "MENTOR_QUEUE"
-            wait_message = get_wait_message() # Call the timezone function
+            wait_message = get_wait_message()
             await query.edit(wait_message)
             print(f"User {sender_id} chose to wait for mentor.")
     
@@ -181,24 +171,22 @@ async def handle_button_press(query):
                 "I've marked you as pending verification. A human mentor will personally "
                 "check the payment and get you added to the premium group.\n\n" +
                 wait_message_part + "\n\n"
-                "_(This is an automated response. A human mentor will reply next.)_" # <-- EDITED
+                "_(This is an automated response. A human mentor will reply next.)_"
             )
             print(f"User {sender_id} claims they paid. Marked for verification.")
         
         elif query.data == b'paid_no':
-            # Send the sales pitch
             user_states[sender_id] = "AWAITING_PAY_METHOD"
             await query.edit(
                 "Understood. Here is the membership information:\n\n"
-                "_(This is an automated response)_" # <-- EDITED
+                "_(This is an automated response)_"
             )
             await client.send_message(sender_id, SALES_MESSAGE)
             
-            # Ask HOW they want to pay
             await client.send_message(
                 sender_id,
                 "How would you like to pay?\n\n"
-                "_(This is an automated response)_", # <-- EDITED
+                "_(This is an automated response)_",
                 buttons=[
                     Button.inline("💳 Pay with Credit Card", b'pay_card'),
                     Button.inline("₿ Pay with Bitcoin", b'pay_btc'),
@@ -216,7 +204,7 @@ async def handle_button_press(query):
                 f"**Payment Link:** {WHOP_PAYMENT_LINK}\n\n"
                 "After payment, you will receive a confirmation. Please "
                 "message the mentor here after you've paid to be added to the group.\n\n"
-                "_(This is an automated response)_" # <-- EDITED
+                "_(This is an automated response)_"
             )
             print(f"User {sender_id} clicked Pay with Card. Sent Whop link.")
         
@@ -229,7 +217,7 @@ async def handle_button_press(query):
                 f"`{address_to_send}`\n\n"
                 "**IMPORTANT:** This is the *only* official address. After you have sent the payment, "
                 "please click the button below.\n\n"
-                "_(This is an automated response)_" # <-- EDITED
+                "_(This is an automated response)_"
             )
             await client.send_message(
                 sender_id,
@@ -239,7 +227,6 @@ async def handle_button_press(query):
             print(f"User {sender_id} clicked Pay with Bitcoin.")
             
         elif query.data == b'wait_mentor_payment':
-            # User wants to wait instead of paying
             user_states[sender_id] = "MENTOR_QUEUE"
             wait_message = get_wait_message()
             await query.edit(wait_message)
@@ -256,15 +243,15 @@ async def handle_button_press(query):
                 "A mentor will **personally verify the transaction** on the blockchain "
                 "and will reply here to onboard you.\n\n" +
                 wait_message_part + "\n\n"
-                "_(This is an automated response. A human mentor will reply next.)_" # <-- EDITED
+                "_(This is an automated response. A human mentor will reply next.)_"
             )
             print(f"User {sender_id} claims they sent Bitcoin. Marked for verification.")
 
 
 async def main():
-    print("Personal Assistant is starting...")
+    print("Personal Assistant 1 is starting...")
     await client.start()
-    print("Personal Assistant is running. Waiting for new DMs...")
+    print("Personal Assistant 1 is running. Waiting for new DMs...")
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
